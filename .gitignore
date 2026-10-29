@@ -1,5 +1,5 @@
 out/
 bin/
 .venv/
-build/
 __pycache__/
+build/
