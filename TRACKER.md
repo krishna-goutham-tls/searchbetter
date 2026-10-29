@@ -1,5 +1,7 @@
 # Tracker
 
+Next: stage 2, waiting on Krishna's go-ahead (parked by Krishna on 2026-10-29).
+
 ## Stage 1: file names (built 2026-10-29)
 
 - [x] Menu bar app, Option+Space hotkey, search panel
