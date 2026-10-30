@@ -8,7 +8,8 @@ final class KeyPanel: NSPanel {
 
 /// The search box: a text field, a result list and a footer with the search time.
 final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
-    let index: FileIndex
+    let engine: Engine
+    var index: FileIndex { engine.files }
     var indexing = true
 
     private let panel: KeyPanel
@@ -16,18 +17,21 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
     private let table = NSTableView()
     private let scroll = NSScrollView()
     private let footer = NSTextField(labelWithString: "")
-    private var results: [FileIndex.Hit] = []
+    private var results: [ResultRow] = []
+    private var thumbCache: [String: NSImage] = [:]
+    private var userMoved = false
     private var lastMs = 0.0
     private var iconCache: [String: NSImage] = [:]
 
     private let width: CGFloat = 720
     private let fieldH: CGFloat = 58
-    private let rowH: CGFloat = 46
-    private let maxRows = 9
+    private let rowH: CGFloat = 50
+    private let imageRowH: CGFloat = 84
+    private let maxListH: CGFloat = 470
     private let footerH: CGFloat = 28
 
-    init(index: FileIndex) {
-        self.index = index
+    init(engine: Engine) {
+        self.engine = engine
         panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 58),
                          styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                          backing: .buffered, defer: false)
@@ -65,7 +69,7 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 24, weight: .light)
-        field.placeholderString = "Search files, folders and apps"
+        field.placeholderString = "Search by name, by words, or by what you remember"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
         field.translatesAutoresizingMaskIntoConstraints = false
@@ -133,21 +137,36 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
+        engine.indexer?.hold(true)
         updateFooter()
     }
 
     func type(_ text: String) { field.stringValue = text; runSearch() }
 
+    /// Fills the panel without showing it, for checks while someone uses the Mac.
+    func render(_ text: String, done: @escaping () -> Void) {
+        field.stringValue = text
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        engine.search(text) { [weak self] rows, final in
+            self?.draw(rows, t0)
+            if final { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: done) }
+        }
+    }
+
     /// Draws the panel into a PNG. Works without a screen, for checks and demos.
     func snapshot(to path: String) {
         guard let v = panel.contentView else { return }
         v.layoutSubtreeIfNeeded()
+        (v as? NSVisualEffectView)?.material = .windowBackground
         guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
         v.cacheDisplay(in: v.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
 
+    func engineReady() { if isVisible { engine.indexer?.hold(true) } }
+
     func hide() {
+        engine.indexer?.hold(false)
         panel.orderOut(nil)
         NSApp.hide(nil)
     }
@@ -155,8 +174,8 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
     func windowDidResignKey(_ notification: Notification) { if panel.isVisible { hide() } }
 
     private func resize() {
-        let rows = min(results.count, maxRows)
-        let listH = rows > 0 ? CGFloat(rows) * rowH + 8 : 0
+        let rows = results.count
+        let listH = rows > 0 ? min(maxListH, results.reduce(8) { $0 + height($1) }) : 0
         let h = fieldH + listH + (field.stringValue.isEmpty ? 0 : footerH)
         var f = panel.frame
         let top = f.maxY
@@ -174,17 +193,33 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
     func runSearch() {
         let q = field.stringValue.trimmingCharacters(in: .whitespaces)
         let t0 = DispatchTime.now().uptimeNanoseconds
-        results = q.isEmpty ? [] : index.search(q)
+        userMoved = false
+        if q.isEmpty { draw([], t0); return }
+        engine.search(q) { [weak self] rows, _ in self?.draw(rows, t0) }
+    }
+
+    private func draw(_ rows: [ResultRow], _ t0: UInt64) {
+        let keep = userMoved ? selectedPath : nil
+        results = rows
         lastMs = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         table.reloadData()
-        if !results.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false); table.scrollRowToVisible(0) }
+        if !results.isEmpty {
+            let r = keep.flatMap { p in results.firstIndex { $0.path == p } } ?? 0
+            table.selectRowIndexes([r], byExtendingSelection: false)
+            table.scrollRowToVisible(r)
+        }
         resize()
         updateFooter()
     }
 
+    private func height(_ r: ResultRow) -> CGFloat { r.isImage ? imageRowH : rowH }
+
     func updateFooter() {
         let n = NumberFormatter.localizedString(from: NSNumber(value: index.liveCount), number: .decimal)
-        let status = indexing ? "reading your files… \(n) so far" : "\(n) files"
+        var status = indexing ? "reading your files… \(n) so far" : "\(n) files"
+        if let idx = engine.indexer, idx.remaining > 0 {
+            status += "  ·  \(NumberFormatter.localizedString(from: NSNumber(value: idx.remaining), number: .decimal)) left to index"
+        }
         let found = results.isEmpty ? "no matches" : "\(results.count == 30 ? "30+" : "\(results.count)") results"
         footer.stringValue = String(format: "%@ in %.2f ms   ·   %@   ·   ↩ open   ⌘↩ show in Finder", found, lastMs, status)
     }
@@ -210,11 +245,12 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         let r = max(0, min(results.count - 1, table.selectedRow + d))
         table.selectRowIndexes([r], byExtendingSelection: false)
         table.scrollRowToVisible(r)
+        userMoved = true
     }
 
     private var selectedPath: String? {
         let r = table.selectedRow
-        return r >= 0 && r < results.count ? index.paths[results[r].id] : nil
+        return r >= 0 && r < results.count ? results[r].path : nil
     }
 
     @objc func openSelected() {
@@ -233,15 +269,38 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
 
     func numberOfRows(in tableView: NSTableView) -> Int { results.count }
 
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { height(results[row]) }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = (tableView.makeView(withIdentifier: ResultCell.id, owner: nil) as? ResultCell) ?? ResultCell()
-        let p = index.paths[results[row].id]
-        cell.title.stringValue = (p as NSString).lastPathComponent
-        var dir = (p as NSString).deletingLastPathComponent
+        let r = results[row]
+        var dir = (r.path as NSString).deletingLastPathComponent
         if dir.hasPrefix(index.home) { dir = "~" + dir.dropFirst(index.home.count) }
-        cell.subtitle.stringValue = dir
-        cell.icon.image = icon(p)
+        let name = (r.path as NSString).lastPathComponent
+        let snip = engine.snippet(for: r)
+        if snip != nil || r.isImage {
+            let t = NSMutableAttributedString(string: name, attributes: [.font: cell.title.font!, .foregroundColor: NSColor.labelColor])
+            if snip != nil {
+                t.append(NSAttributedString(string: "   " + dir, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor]))
+            }
+            cell.title.attributedStringValue = t
+        } else {
+            cell.title.stringValue = name
+        }
+        cell.subtitle.stringValue = snip ?? dir
+        cell.subtitle.lineBreakMode = snip == nil ? .byTruncatingHead : .byTruncatingTail
+        let thumb = r.isImage ? thumbnail(r.path) : nil
+        cell.icon.image = thumb ?? icon(r.path)
+        cell.setIconSize(r.isImage && thumb != nil ? 70 : 30)
         return cell
+    }
+
+    private func thumbnail(_ p: String) -> NSImage? {
+        if let i = thumbCache[p] { return i }
+        guard let d = engine.thumbnail(path: p), let i = NSImage(data: d) else { return nil }
+        if thumbCache.count > 500 { thumbCache.removeAll() }
+        thumbCache[p] = i
+        return i
     }
 
     private func icon(_ p: String) -> NSImage {
@@ -258,6 +317,8 @@ final class ResultCell: NSTableCellView {
     let icon = NSImageView()
     let title = NSTextField(labelWithString: "")
     let subtitle = NSTextField(labelWithString: "")
+    private var iconW: NSLayoutConstraint!
+    private var iconH: NSLayoutConstraint!
 
     init() {
         super.init(frame: .zero)
@@ -267,20 +328,31 @@ final class ResultCell: NSTableCellView {
         subtitle.font = .systemFont(ofSize: 11)
         subtitle.textColor = .secondaryLabelColor
         subtitle.lineBreakMode = .byTruncatingHead
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.wantsLayer = true
+        icon.layer?.cornerRadius = 6
+        icon.layer?.masksToBounds = true
         for v in [icon, title, subtitle] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        iconW = icon.widthAnchor.constraint(equalToConstant: 30)
+        iconH = icon.heightAnchor.constraint(equalToConstant: 30)
+        let block = NSLayoutGuide()
+        addLayoutGuide(block)
         NSLayoutConstraint.activate([
+            iconW, iconH,
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 30),
-            icon.heightAnchor.constraint(equalToConstant: 30),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
             title.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            title.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            title.topAnchor.constraint(equalTo: block.topAnchor),
             subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             subtitle.trailingAnchor.constraint(equalTo: title.trailingAnchor),
             subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 1),
+            subtitle.bottomAnchor.constraint(equalTo: block.bottomAnchor),
+            block.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
+
+    func setIconSize(_ s: CGFloat) { iconW.constant = s; iconH.constant = s }
 
     required init?(coder: NSCoder) { fatalError() }
 }

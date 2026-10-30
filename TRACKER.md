@@ -1,6 +1,6 @@
 # Tracker
 
-Next: stage 2, waiting on Krishna's go-ahead (parked by Krishna on 2026-10-29).
+Next: Krishna tries his real searches on his own index. Then record the video (LOG 2026-10-30).
 
 ## Stage 1: file names (built 2026-10-29)
 
@@ -13,19 +13,25 @@ Next: stage 2, waiting on Krishna's go-ahead (parked by Krishna on 2026-10-29).
 - [ ] Start at login
 - [ ] Ranking: learn from the files Krishna opens
 
-## Stage 2: text by meaning
+## Stage 2: meaning search for the demo (built 2026-10-30)
 
-- [ ] Read text from text, code, PDF and office files, in pieces
-- [ ] EmbeddingGemma 2 inside the app through llama.cpp
-- [ ] Binary index in RAM, 256-number int8 copy for the re-check
-- [ ] Exact-word index (SQLite FTS5)
-- [ ] Merge the three result waves into one list that does not jump
+- [x] Read text, code and PDF files, in pieces
+- [x] EmbeddingGemma 2 through a llama-server child process
+- [x] Images, newest first, with small thumbnails stored in the index
+- [x] Binary vectors plus full int8 vectors in RAM
+- [x] Exact-word index (SQLite FTS5); common words skip ranking
+- [x] One merged list that does not jump; weak matches hidden
+- [x] Thumbnails and matching lines in result rows
+- [x] `--root` for a safe demo folder; `--index`, `--queries`, `--render` for checks without the panel
+- [ ] Krishna starts the index from the menu bar and tries his real searches
+- [ ] Choose what goes in the demo folder, and record the video
 
-## Stage 3: images
+## After the video
 
-- [ ] Index images, newest first
 - [ ] Setup screen with progress by folder
 - [ ] Pause on battery
+- [ ] Word, Excel and PowerPoint files
+- [ ] Ship llama-server and the model with the app, in place of the Homebrew and Hugging Face copies
 
 ## Later
 

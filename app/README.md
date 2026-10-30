@@ -1,7 +1,8 @@
 # mac-search app
 
 A menu bar app. Option+Space opens a search box. Results show while you type.
-Stage 1 searches file, folder and app names. Nothing leaves the Mac.
+It searches file names, words inside files, and meaning in text, code, PDFs and images.
+Nothing leaves the Mac.
 
 ## Build and check
 
@@ -15,6 +16,13 @@ Stage 1 searches file, folder and app names. Nothing leaves the Mac.
 The first run may ask for access to Desktop, Documents and Downloads. Allow all three, then
 choose "Read all files again" from the menu bar icon.
 
+File names work at once. To search inside files, choose "Start indexing file contents" from the
+menu bar icon. The first pass on a full Mac takes hours, so keep the Mac on power. The same menu
+item pauses and resumes it. Indexing also stops while the search box is open.
+
+It needs `llama-server` (`brew install llama.cpp`) and the model `ggml-org/embeddinggemma-2-GGUF`
+(Q8_0 and mmproj) in the Hugging Face cache.
+
 | Key | Does |
 |---|---|
 | Option+Space | Open or close the search box |
@@ -23,15 +31,35 @@ choose "Read all files again" from the menu bar icon.
 | Command+Return | Show the file in Finder |
 | Esc | Clear the search, then close |
 
-## Demo flags
+## Flags
+
+These never open the search box or take the keyboard:
+
+    mac-search --selftest
+    mac-search --index --root <folder>                 # fill the index for one folder
+    mac-search --root <folder> --query "text"          # print results and times
+    mac-search --root <folder> --queries file.txt      # one search per line
+    mac-search --root <folder> --render "text" --out panel.png
+
+Without `--root` these use the real index of the home folder.
+
+This one opens the search box for one folder, for recording a video:
+
+    open build/mac-search.app --args --root <folder>
+
+This one opens the box and takes the keyboard, so do not run it while someone uses the Mac:
 
     mac-search --show "query" --snapshot /tmp/panel.png
-
-Opens the panel with the query typed in, and saves a picture of it. The panel takes the
-keyboard, so do not run this while someone uses the Mac.
 
 ## What it reads
 
 The home folder, minus junk that exists on any Mac: hidden folders, `~/Library`,
 `node_modules`, `.git`, `build`, `dist`, `venv`, lock files. Plus apps in `/Applications`
 and `/System/Applications`. FSEvents keeps the list current.
+
+Inside files, it reads text and code files up to 1 MB, PDFs, and images of at least 160 by 300
+pixels. It never reads key files or files with `secret`, `password`, `token`, `credential` or
+`api_key` in the name.
+
+The index is at `~/Library/Application Support/mac-search/`, readable only by this user. It holds
+the text of each piece and a small copy of each image. Delete that folder to remove it all.

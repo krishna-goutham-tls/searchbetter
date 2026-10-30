@@ -13,7 +13,14 @@ final class FileIndex {
     private var slot: [String: Int] = [:]  // path -> position, for updates from FSEvents
     private(set) var liveCount = 0
 
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let home: String
+    let includeApps: Bool
+
+    /// `root` limits the index to one folder, for demos and tests. Nil means the home folder plus apps.
+    init(root: String? = nil) {
+        home = root ?? FileManager.default.homeDirectoryForCurrentUser.path
+        includeApps = root == nil
+    }
 
     // MARK: Skip rules (v1 scope: LOG 2026-10-29). Patterns that are junk on any Mac.
 
@@ -56,11 +63,11 @@ final class FileIndex {
     struct Entry { let path: String; let app: Bool; let day: Int32 }
 
     /// Walks the home folder and the app folders. Safe to call off the main thread.
-    static func walk(home: String) -> [Entry] {
+    static func walk(home: String, includeApps: Bool = true) -> [Entry] {
         var out: [Entry] = []
         out.reserveCapacity(200_000)
         walkTree(home, home: home, into: &out)
-        for root in ["/Applications", "/System/Applications"] { walkApps(root, into: &out) }
+        if includeApps { for root in ["/Applications", "/System/Applications"] { walkApps(root, into: &out) } }
         return out
     }
 

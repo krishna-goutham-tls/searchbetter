@@ -53,7 +53,57 @@ enum SelfTest {
         idx.update(path: path)
         check(idx.search(name).isEmpty, "deleted file is gone after update")
 
+        // Reading files into pieces.
+        check(TextReader.kind(of: "/x/notes.md") == .text && TextReader.kind(of: "/x/a.pdf") == .pdf && TextReader.kind(of: "/x/a.HEIC") == .image, "kinds: text, pdf, image")
+        check(TextReader.kind(of: "/x/server.pem") == nil && TextReader.kind(of: "/x/api_key.txt") == nil && TextReader.kind(of: "/x/passwords.csv") == nil, "key and password files stay out of the index")
+        let long = (1...500).map { "line number \($0) with some words" }.joined(separator: "\n")
+        let parts = TextReader.split(long, firstLine: 1, countLines: true)
+        check(parts.count > 5 && parts.allSatisfy { $0.text.count <= TextReader.pieceChars + 300 }, "split: pieces stay near the size limit")
+        check(parts[3].text.hasPrefix("line number \(parts[3].line) "), "split: a piece knows its first line")
+        check(MeaningIndex.quantize([0.1, -0.1, 2]) == [50, -50, 127], "quantize: scale and clamp")
+        meaningChecks(check)
+
         print(failures == 0 ? "all checks passed" : "\(failures) checks failed")
         return failures == 0 ? 0 : 1
+    }
+
+    /// Index a temporary folder with the real model: meaning, exact words, change and delete.
+    private static func meaningChecks(_ check: (Bool, String) -> Void) {
+        guard ModelFiles.available else { print("skip: model not on this Mac"); return }
+        let dir = NSTemporaryDirectory() + "macsearch-selftest-\(Int.random(in: 100_000...999_999))"
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        guard let m = MeaningIndex(dir: dir + "/db") else { check(false, "index opens"); return }
+        let server = EmbedServer(images: false)
+        defer { server.stop() }
+        check(server.start(), "model server starts")
+        func put(_ name: String, _ text: String) {
+            let v = server.embed(texts: ["title: \(name) | text: \(text)"])!.first!
+            m.put(path: dir + "/" + name, mtime: 1, size: 1, kind: .text, pieces: [(1, text, v)], thumb: nil)
+        }
+        func top(_ q: String) -> String {
+            let v = server.embed(texts: ["task: search result | query: " + q])!.first!
+            return m.search(v).text.first.flatMap { m.path(of: $0.fileID) }.map { ($0 as NSString).lastPathComponent } ?? ""
+        }
+        func exact(_ q: String) -> Int {
+            let s = DispatchSemaphore(value: 0)
+            var n = 0
+            m.exact(q) { n = $0.count; s.signal() }
+            s.wait()
+            return n
+        }
+        put("a.txt", "We give customers their money back within 30 days of purchase.")
+        put("b.txt", "The oven in the second kitchen trips the circuit breaker every morning.")
+        check(top("how long do people have to return things") == "a.txt", "meaning: finds a file without the same words")
+        check(top("why does the electricity cut out when baking") == "b.txt", "meaning: second file")
+        check(exact("circuit brea") == 1, "exact words: half-typed last word")
+        put("a.txt", "Our mountain cabin has two bedrooms and a stove.")
+        check(exact("purchase") == 0 && exact("cabin") == 1, "change: old words go, new words come")
+        check(top("house in the hills") == "a.txt", "change: new meaning found")
+        m.remove(path: dir + "/a.txt")
+        check(m.pieceCount == 1 && top("house in the hills") == "b.txt", "delete: file leaves the search")
+        var t: [Double] = []
+        let q = server.embed(texts: ["task: search result | query: test"])!.first!
+        for _ in 0..<50 { let t0 = DispatchTime.now().uptimeNanoseconds; _ = m.search(q); t.append(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6) }
+        print(String(format: "scan: median %.3f ms", t.sorted()[25]))
     }
 }
