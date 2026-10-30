@@ -12,17 +12,15 @@ enum ModelFiles {
     }()
 
     static let model = "embeddinggemma-2-Q8_0.gguf"
-    static let vision = "mmproj-embeddinggemma-2-Q8_0.gguf"
     static var available: Bool { server != nil && dir != nil }
 }
 
 /// One llama-server child process on a free local port.
 /// A small shell wrapper stops the server when this app dies, even after a crash.
 final class EmbedServer {
-    private let images: Bool
+    private let contextTokens: Int
     private var proc: Process?
     private var port: Int32 = 0
-    private var marker = ""
     private let lock = NSLock()
     private let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
@@ -31,7 +29,7 @@ final class EmbedServer {
         return URLSession(configuration: c)
     }()
 
-    init(images: Bool) { self.images = images }
+    init(contextTokens: Int) { self.contextTokens = contextTokens }
 
     var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return proc?.isRunning == true }
 
@@ -41,10 +39,9 @@ final class EmbedServer {
         if proc?.isRunning == true { return true }
         guard let server = ModelFiles.server, let dir = ModelFiles.dir else { return false }
         port = Self.freePort()
-        var args = ["-m", dir + "/" + ModelFiles.model, "--embedding", "--pooling", "mean", "-ngl", "99",
-                    "--host", "127.0.0.1", "--port", String(port), "-np", "1", "--no-webui"]
-        args += images ? ["--mmproj", dir + "/" + ModelFiles.vision, "-c", "2048", "-b", "2048", "-ub", "2048"]
-                       : ["-c", "512", "-b", "512", "-ub", "512"]
+        let args = ["-m", dir + "/" + ModelFiles.model, "--embedding", "--pooling", "mean", "-ngl", "99",
+                    "--host", "127.0.0.1", "--port", String(port), "-np", "1", "--no-webui",
+                    "-c", String(contextTokens), "-b", String(contextTokens), "-ub", String(contextTokens)]
         // kill -9: on a normal stop, llama-server aborts in its Metal cleanup and macOS logs a crash report.
         let script = #""$0" "$@" & c=$!; trap 'kill -9 $c 2>/dev/null' EXIT TERM; while kill -0 $PPID 2>/dev/null && kill -0 $c 2>/dev/null; do sleep 2; done"#
         let p = Process()
@@ -57,10 +54,6 @@ final class EmbedServer {
         for _ in 0..<600 {
             if !p.isRunning { return false }
             if let d = send("health", nil, timeout: 2), String(decoding: d, as: UTF8.self).contains("ok") {
-                if images, let d = send("props", nil, timeout: 5),
-                   let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-                    marker = j["media_marker"] as? String ?? ""
-                }
                 return true
             }
             usleep(100_000)
@@ -116,17 +109,11 @@ final class EmbedServer {
         guard let body = try? JSONSerialization.data(withJSONObject: ["content": texts]) else { return nil }
         return vectors(send("embedding", body))
     }
-
-    func embed(jpeg: Data) -> [Float]? {
-        let content: [String: Any] = ["prompt_string": marker, "multimodal_data": [jpeg.base64EncodedString()]]
-        guard let body = try? JSONSerialization.data(withJSONObject: ["content": content]) else { return nil }
-        return vectors(send("embedding", body))?.first
-    }
 }
 
 /// Turns a typed search into a vector. Keeps only the newest search if keys arrive faster than the model.
 final class QueryEncoder {
-    private let server = EmbedServer(images: false)
+    private let server = EmbedServer(contextTokens: 512)
     private let queue = DispatchQueue(label: "mac-search.query", qos: .userInteractive)
     private var cache: [String: [Float]] = [:]   // main thread only
     private var running = false                  // main thread only

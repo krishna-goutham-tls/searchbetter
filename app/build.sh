@@ -12,7 +12,7 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 
 swiftc -O -swift-version 5 -sdk "$SDK" -target arm64-apple-macos14.0 \
     -module-name MacSearch -framework AppKit -framework Carbon -framework CoreServices -framework PDFKit \
-    -framework ImageIO -framework UniformTypeIdentifiers -lsqlite3 \
+    -framework ImageIO -framework UniformTypeIdentifiers -framework Vision -framework IOKit -lsqlite3 \
     -o "$CONTENTS/MacOS/mac-search" Sources/*.swift
 
 cat > "$CONTENTS/Info.plist" <<'PLIST'

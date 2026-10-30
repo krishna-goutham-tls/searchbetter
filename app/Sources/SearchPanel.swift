@@ -217,9 +217,7 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
     func updateFooter() {
         let n = NumberFormatter.localizedString(from: NSNumber(value: index.liveCount), number: .decimal)
         var status = indexing ? "reading your files… \(n) so far" : "\(n) files"
-        if let idx = engine.indexer, idx.remaining > 0 {
-            status += "  ·  \(NumberFormatter.localizedString(from: NSNumber(value: idx.remaining), number: .decimal)) left to index"
-        }
+        if let idx = engine.indexer, idx.isActive { status = idx.status }
         let found = results.isEmpty ? "no matches" : "\(results.count == 30 ? "30+" : "\(results.count)") results"
         footer.stringValue = String(format: "%@ in %.2f ms   ·   %@   ·   ↩ open   ⌘↩ show in Finder", found, lastMs, status)
     }

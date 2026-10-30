@@ -1,6 +1,6 @@
 # Tracker
 
-Next: Krishna tries his real searches on his own index. Then record the video (LOG 2026-10-30).
+Next: time the new indexing passes on Krishna's Mac, then he tries his real searches. Then record the video (LOG 2026-10-30).
 
 ## Stage 1: file names (built 2026-10-29)
 
@@ -17,19 +17,23 @@ Next: Krishna tries his real searches on his own index. Then record the video (L
 
 - [x] Read text, code and PDF files, in pieces
 - [x] EmbeddingGemma 2 through a llama-server child process
-- [x] Images, newest first, with small thumbnails stored in the index
+- [x] Images through Apple Vision labels and text, with small thumbnails stored in the index
+- [x] Indexing in passes: words, notes and PDFs, images, code and data, deep read on power
+- [x] Your own folders first, status that says what is ready, pause on battery
 - [x] Binary vectors plus full int8 vectors in RAM
 - [x] Exact-word index (SQLite FTS5); common words skip ranking
 - [x] One merged list that does not jump; weak matches hidden
 - [x] Thumbnails and matching lines in result rows
 - [x] `--root` for a safe demo folder; `--index`, `--queries`, `--render` for checks without the panel
-- [ ] Krishna starts the index from the menu bar and tries his real searches
+- [ ] Krishna tries his real searches
 - [ ] Choose what goes in the demo folder, and record the video
 
 ## After the video
 
-- [ ] Setup screen with progress by folder
-- [ ] Pause on battery
+- [ ] Small setup window with progress by folder
+- [ ] Stable signing, so a new build does not ask for folder access again
+- [ ] Read text in scanned PDFs with Apple Vision
+- [ ] Optional image model pass, if real searches show the labels are too general
 - [ ] Word, Excel and PowerPoint files
 - [ ] Ship llama-server and the model with the app, in place of the Homebrew and Hugging Face copies
 

@@ -17,11 +17,15 @@ The first run may ask for access to Desktop, Documents and Downloads. Allow all 
 choose "Read all files again" from the menu bar icon.
 
 File names work at once. To search inside files, choose "Start indexing file contents" from the
-menu bar icon. The first pass on a full Mac takes hours, so keep the Mac on power. The same menu
-item pauses and resumes it. Indexing also stops while the search box is open.
+menu bar icon. The menu line says what is ready. Passes run in this order: exact words, notes and
+PDFs, images, code and data, then a full read of notes and PDFs. Model work stops while the search
+box is open, and below 50% battery. The full read runs only on power.
+
+A new build has a new ad hoc signature, so macOS asks for folder access again. Until someone allows
+it, the app waits and shows no results.
 
 It needs `llama-server` (`brew install llama.cpp`) and the model `ggml-org/embeddinggemma-2-GGUF`
-(Q8_0 and mmproj) in the Hugging Face cache.
+(Q8_0) in the Hugging Face cache.
 
 | Key | Does |
 |---|---|
@@ -57,8 +61,8 @@ The home folder, minus junk that exists on any Mac: hidden folders, `~/Library`,
 `node_modules`, `.git`, `build`, `dist`, `venv`, lock files. Plus apps in `/Applications`
 and `/System/Applications`. FSEvents keeps the list current.
 
-Inside files, it reads text and code files up to 1 MB, PDFs, and images of at least 160 by 300
-pixels. It never reads key files or files with `secret`, `password`, `token`, `credential` or
+Inside files, it reads text and code files up to 1 MB and PDFs up to 100 MB. For images of at least
+160 by 300 pixels, Apple's on-device recognition supplies labels and any text in the image. It never reads key files or files with `secret`, `password`, `token`, `credential` or
 `api_key` in the name.
 
 The index is at `~/Library/Application Support/mac-search/`, readable only by this user. It holds

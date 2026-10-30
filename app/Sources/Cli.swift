@@ -4,6 +4,7 @@ import AppKit
 /// Neither opens the search box.
 enum Cli {
     static func run(root: String?) -> Never {
+        setlinebuf(stdout)
         let engine = Engine(root: root)
         let t0 = Date()
         engine.files.load(FileIndex.walk(home: engine.files.home, includeApps: engine.files.includeApps))
@@ -45,16 +46,17 @@ enum Cli {
 
     private static func fill(_ engine: Engine, _ t0: Date) {
         let idx = engine.indexer!
+        idx.onPhaseDone = { name, secs in print(String(format: "  %@: %.0f s", name, secs)) }
         DispatchQueue.main.sync { idx.start(paths: engine.files.paths) }
         var last = Date()
         while !idx.isFinished {
             usleep(200_000)
-            if Date().timeIntervalSince(last) > 10 {
-                print("  \(idx.done) files done, \(idx.remaining) left, \(engine.meaning!.pieceCount) pieces, \(Int(Date().timeIntervalSince(t0))) s")
+            if Date().timeIntervalSince(last) > 15 {
+                print("  \(idx.status), \(engine.meaning!.pieceCount) vectors, \(Int(Date().timeIntervalSince(t0))) s")
                 last = Date()
             }
         }
-        print(String(format: "indexed %d files, %d pieces in %.0f s", idx.done, engine.meaning!.pieceCount, Date().timeIntervalSince(t0)))
+        print(String(format: "indexed: %d vectors in %.0f s", engine.meaning!.pieceCount, Date().timeIntervalSince(t0)))
         engine.indexer!.stop()
     }
 

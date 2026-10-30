@@ -3,14 +3,17 @@ import Foundation
 import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
+import Vision
 
 /// Decides what can be read for meaning search, and reads it into pieces.
 enum TextReader {
-    enum Kind: Int { case text = 1, pdf = 2, image = 3 }
+    enum Kind: Int { case code = 1, pdf = 2, image = 3, note = 4 }
     struct Piece { let line: Int; let text: String }   // line is the page number in a PDF
 
-    static let textExts: Set<String> = [
-        "txt", "md", "markdown", "rst", "org", "tex", "csv", "tsv", "html", "htm", "xml", "json", "yaml", "yml", "toml",
+    static let noteExts: Set<String> = ["txt", "md", "markdown", "rst", "org", "tex"]
+    /// Exact-word search covers these in full. Meaning search reads only the start of each file (LOG 2026-10-30).
+    static let codeExts: Set<String> = [
+        "csv", "tsv", "html", "htm", "xml", "json", "yaml", "yml", "toml",
         "ini", "conf", "sql", "swift", "py", "js", "jsx", "ts", "tsx", "mjs", "cjs", "go", "rs", "java", "kt", "c", "h",
         "cc", "cpp", "hpp", "m", "mm", "rb", "php", "sh", "zsh", "bash", "lua", "dart", "vue", "svelte", "css", "scss",
     ]
@@ -21,6 +24,7 @@ enum TextReader {
 
     static let maxTextBytes = 1_000_000
     static let maxPieces = 200
+    static let maxPDFBytes = 100_000_000
     static let pieceChars = 1000
 
     static func kind(of path: String) -> Kind? {
@@ -30,12 +34,13 @@ enum TextReader {
         if name.hasSuffix(".min.js") || name.hasSuffix(".min.css") { return nil }
         if ext == "pdf" { return .pdf }
         if imageExts.contains(ext) { return .image }
-        return textExts.contains(ext) ? .text : nil
+        if noteExts.contains(ext) { return .note }
+        return codeExts.contains(ext) ? .code : nil
     }
 
     static func read(_ path: String, kind: Kind) -> [Piece] {
         switch kind {
-        case .text: return readText(path)
+        case .code, .note: return readText(path)
         case .pdf: return readPDF(path)
         case .image: return []
         }
@@ -48,6 +53,8 @@ enum TextReader {
     }
 
     private static func readPDF(_ path: String) -> [Piece] {
+        var st = stat()
+        guard lstat(path, &st) == 0, st.st_size <= maxPDFBytes else { return [] }
         guard let doc = PDFDocument(url: URL(fileURLWithPath: path)), !doc.isEncrypted else { return [] }
         var out: [Piece] = []
         for i in 0..<doc.pageCount where out.count < maxPieces {
@@ -92,21 +99,35 @@ enum TextReader {
         return Array(out.prefix(maxPieces))
     }
 
-    /// Returns a JPEG for the model and a small JPEG for the result row. Nil for small images such as icons.
-    static func prepareImage(_ path: String) -> (forModel: Data, thumb: Data)? {
+    /// Apple's on-device recognition: what the image shows, and any text in it. About 25 ms per image.
+    /// Returns nil for small images such as icons.
+    static func describe(_ path: String) -> (text: String, thumb: Data)? {
         guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
               let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
-              min(w, h) >= 160, max(w, h) >= 300 else { return nil }
-        guard let big = jpeg(src, maxPixels: 768, quality: 0.85), let small = jpeg(src, maxPixels: 240, quality: 0.7) else { return nil }
-        return (big, small)
+              min(w, h) >= 160, max(w, h) >= 300,
+              let img = thumbnail(src, maxPixels: 768), let small = thumbnail(src, maxPixels: 240), let thumb = jpeg(small, quality: 0.7)
+        else { return nil }
+        let classify = VNClassifyImageRequest()
+        let read = VNRecognizeTextRequest()
+        read.recognitionLevel = .fast
+        try? VNImageRequestHandler(cgImage: img).perform([classify, read])
+        let labels = (classify.results ?? []).filter { $0.confidence > 0.1 }.prefix(12)
+            .map { $0.identifier.replacingOccurrences(of: "_", with: " ") }
+        let words = (read.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
+        var text = "photo of " + labels.joined(separator: ", ")
+        if !words.isEmpty { text += ". text in image: " + words.prefix(400) }
+        return (text, thumb)
     }
 
-    private static func jpeg(_ src: CGImageSource, maxPixels: Int, quality: Double) -> Data? {
+    private static func thumbnail(_ src: CGImageSource, maxPixels: Int) -> CGImage? {
         let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                      kCGImageSourceCreateThumbnailWithTransform: true,
                                      kCGImageSourceThumbnailMaxPixelSize: maxPixels]
-        guard let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
+    }
+
+    private static func jpeg(_ img: CGImage, quality: Double) -> Data? {
         let out = NSMutableData()
         guard let dst = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(dst, img, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)

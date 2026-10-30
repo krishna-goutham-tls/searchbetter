@@ -54,7 +54,7 @@ enum SelfTest {
         check(idx.search(name).isEmpty, "deleted file is gone after update")
 
         // Reading files into pieces.
-        check(TextReader.kind(of: "/x/notes.md") == .text && TextReader.kind(of: "/x/a.pdf") == .pdf && TextReader.kind(of: "/x/a.HEIC") == .image, "kinds: text, pdf, image")
+        check(TextReader.kind(of: "/x/notes.md") == .note && TextReader.kind(of: "/x/a.swift") == .code && TextReader.kind(of: "/x/a.pdf") == .pdf && TextReader.kind(of: "/x/a.HEIC") == .image, "kinds: text, pdf, image")
         check(TextReader.kind(of: "/x/server.pem") == nil && TextReader.kind(of: "/x/api_key.txt") == nil && TextReader.kind(of: "/x/passwords.csv") == nil, "key and password files stay out of the index")
         let long = (1...500).map { "line number \($0) with some words" }.joined(separator: "\n")
         let parts = TextReader.split(long, firstLine: 1, countLines: true)
@@ -73,12 +73,12 @@ enum SelfTest {
         let dir = NSTemporaryDirectory() + "macsearch-selftest-\(Int.random(in: 100_000...999_999))"
         defer { try? FileManager.default.removeItem(atPath: dir) }
         guard let m = MeaningIndex(dir: dir + "/db") else { check(false, "index opens"); return }
-        let server = EmbedServer(images: false)
+        let server = EmbedServer(contextTokens: 2048)
         defer { server.stop() }
         check(server.start(), "model server starts")
         func put(_ name: String, _ text: String) {
             let v = server.embed(texts: ["title: \(name) | text: \(text)"])!.first!
-            m.put(path: dir + "/" + name, mtime: 1, size: 1, kind: .text, pieces: [(1, text, v)], thumb: nil)
+            m.put(path: dir + "/" + name, mtime: 1, size: 1, kind: .note, pieces: [(1, text, v)], thumb: nil)
         }
         func top(_ q: String) -> String {
             let v = server.embed(texts: ["task: search result | query: " + q])!.first!
@@ -105,7 +105,7 @@ enum SelfTest {
         let v = server.embed(texts: ["title: c | text: concurrency"])!.first!
         DispatchQueue.concurrentPerform(iterations: 400) { i in
             let p = dir + "/race-\(i % 40).txt"
-            if i % 2 == 0 { m.put(path: p, mtime: 1, size: 1, kind: .text, pieces: [(1, "race", v)], thumb: nil) }
+            if i % 2 == 0 { m.put(path: p, mtime: 1, size: 1, kind: .note, pieces: [(1, "race", v)], thumb: nil) }
             else { m.remove(path: p) }
         }
         check(true, "writes from many threads do not crash")

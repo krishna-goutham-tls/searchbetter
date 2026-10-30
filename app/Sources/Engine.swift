@@ -41,7 +41,7 @@ final class Engine {
     /// Opens the index and loads the vectors into RAM. Call off the main thread for a large index.
     func openMeaning() -> Bool {
         guard ModelFiles.available, let m = MeaningIndex(dir: dataDir) else { return false }
-        let idx = Indexer(index: m)
+        let idx = Indexer(index: m, home: files.home)
         DispatchQueue.main.sync { meaning = m; indexer = idx }
         encoder.warmUp()
         return true

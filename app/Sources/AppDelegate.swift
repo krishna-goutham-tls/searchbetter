@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var watcher: Watcher?
     private var statusItem: NSStatusItem!
     private let countItem = NSMenuItem(title: "Reading your files…", action: nil, keyEquivalent: "")
+    private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let meaningItem = NSMenuItem(title: "Start indexing file contents", action: #selector(toggleMeaning), keyEquivalent: "")
 
     private static let enabledKey = "meaning.enabled"
@@ -29,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Search  (⌥ Space)", action: #selector(showPanel), keyEquivalent: ""))
         menu.addItem(countItem)
         menu.addItem(NSMenuItem(title: "Read all files again", action: #selector(rebuild), keyEquivalent: ""))
+        menu.addItem(statusLine)
+        statusLine.isHidden = true
         menu.addItem(meaningItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit mac-search", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -114,13 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var lastMeaningRefresh = Date.distantPast
     private func refreshMeaning() {
-        guard let idx = engine.indexer, let m = engine.meaning else { return }
-        let left = idx.remaining
-        let n = NumberFormatter.localizedString(from: NSNumber(value: left), number: .decimal)
-        meaningItem.title = idx.isPaused ? "Resume indexing (\(n) files left)"
-            : left > 0 ? "Pause indexing (\(n) files left)" : "File contents indexed"
+        guard let idx = engine.indexer else { return }
+        statusLine.isHidden = false
+        statusLine.title = idx.status
+        meaningItem.title = idx.isPaused ? "Resume indexing" : "Pause indexing"
+        meaningItem.isHidden = !idx.isPaused && !idx.isActive
         if Date().timeIntervalSince(lastMeaningRefresh) > 0.5 { lastMeaningRefresh = Date(); panel.updateFooter() }
-        _ = m
     }
 
     private var lastWalk = 0.0
