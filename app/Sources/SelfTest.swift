@@ -101,6 +101,14 @@ enum SelfTest {
         check(top("house in the hills") == "a.txt", "change: new meaning found")
         m.remove(path: dir + "/a.txt")
         check(m.pieceCount == 1 && top("house in the hills") == "b.txt", "delete: file leaves the search")
+        // Regression: FSEvents removals arrive on other threads while the indexer writes (crash of 2026-10-30).
+        let v = server.embed(texts: ["title: c | text: concurrency"])!.first!
+        DispatchQueue.concurrentPerform(iterations: 400) { i in
+            let p = dir + "/race-\(i % 40).txt"
+            if i % 2 == 0 { m.put(path: p, mtime: 1, size: 1, kind: .text, pieces: [(1, "race", v)], thumb: nil) }
+            else { m.remove(path: p) }
+        }
+        check(true, "writes from many threads do not crash")
         var t: [Double] = []
         let q = server.embed(texts: ["task: search result | query: test"])!.first!
         for _ in 0..<50 { let t0 = DispatchTime.now().uptimeNanoseconds; _ = m.search(q); t.append(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6) }

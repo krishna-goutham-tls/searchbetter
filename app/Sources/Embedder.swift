@@ -45,7 +45,8 @@ final class EmbedServer {
                     "--host", "127.0.0.1", "--port", String(port), "-np", "1", "--no-webui"]
         args += images ? ["--mmproj", dir + "/" + ModelFiles.vision, "-c", "2048", "-b", "2048", "-ub", "2048"]
                        : ["-c", "512", "-b", "512", "-ub", "512"]
-        let script = #""$0" "$@" & c=$!; trap 'kill $c 2>/dev/null' EXIT TERM; while kill -0 $PPID 2>/dev/null && kill -0 $c 2>/dev/null; do sleep 2; done"#
+        // kill -9: on a normal stop, llama-server aborts in its Metal cleanup and macOS logs a crash report.
+        let script = #""$0" "$@" & c=$!; trap 'kill -9 $c 2>/dev/null' EXIT TERM; while kill -0 $PPID 2>/dev/null && kill -0 $c 2>/dev/null; do sleep 2; done"#
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", script, server] + args

@@ -13,7 +13,8 @@ final class MeaningIndex {
     static let words = 12              // 768 bits as 12 UInt64
     static let int8Scale: Float = 500  // vectors are unit length, so components stay small
 
-    private var db: OpaquePointer?     // indexer thread
+    private var db: OpaquePointer?     // use only inside writer.sync: statements and transactions must not overlap
+    private let writer = DispatchQueue(label: "mac-search.writer", qos: .utility)
     private var reader: OpaquePointer? // exact-word searches and row details
     private let readerQueue = DispatchQueue(label: "mac-search.reader", qos: .userInteractive)
 
@@ -89,10 +90,12 @@ final class MeaningIndex {
 
     func path(of file: Int32) -> String? { pthread_rwlock_rdlock(&rw); defer { pthread_rwlock_unlock(&rw) }; return paths[file] }
 
-    // MARK: Writing (indexer thread)
+    // MARK: Writing
 
     /// path -> mtime and size of what the index holds now.
-    func known() -> [String: (mtime: Int64, size: Int64)] {
+    func known() -> [String: (mtime: Int64, size: Int64)] { writer.sync { knownRows() } }
+
+    private func knownRows() -> [String: (mtime: Int64, size: Int64)] {
         var out: [String: (mtime: Int64, size: Int64)] = [:]
         var s: OpaquePointer?
         sqlite3_prepare_v2(db, "SELECT path, mtime, size FROM files", -1, &s, nil)
@@ -106,6 +109,11 @@ final class MeaningIndex {
     /// Replaces one file. An empty list still records the file, so it is not read again until it changes.
     func put(path: String, mtime: Int64, size: Int64, kind: TextReader.Kind,
              pieces: [(line: Int, text: String, vector: [Float])], thumb: Data?) {
+        writer.sync { store(path: path, mtime: mtime, size: size, kind: kind, pieces: pieces, thumb: thumb) }
+    }
+
+    private func store(path: String, mtime: Int64, size: Int64, kind: TextReader.Kind,
+                       pieces: [(line: Int, text: String, vector: [Float])], thumb: Data?) {
         let oldID = fileID(path)
         exec("BEGIN")
         if let oldID { deleteRows(oldID) }
@@ -137,9 +145,11 @@ final class MeaningIndex {
     }
 
     func remove(path: String) {
-        guard let id = fileID(path) else { return }
-        exec("BEGIN"); deleteRows(id); exec("COMMIT")
-        pthread_rwlock_wrlock(&rw); dropFromRAM(id); pthread_rwlock_unlock(&rw)
+        writer.sync {
+            guard let id = fileID(path) else { return }
+            exec("BEGIN"); deleteRows(id); exec("COMMIT")
+            pthread_rwlock_wrlock(&rw); dropFromRAM(id); pthread_rwlock_unlock(&rw)
+        }
     }
 
     private func fileID(_ path: String) -> Int32? {
