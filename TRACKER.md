@@ -1,8 +1,8 @@
 # Tracker
 
-Next: add the app icon, then Krishna records the Spotlight race on his own account and the agent checks every frame. Then the landing page at searchbetter.thelaunch.space.
+Next: friend test on another Mac, then Krishna records the Spotlight race on his own account and the agent checks every frame. Then the landing page at searchbetter.thelaunch.space.
 
-Before launch: setup screen that explains the folder prompts, Developer ID signing, menu bar icon, start at login, formal trademark check on SearchBetter.
+Before launch: Developer ID signing, menu bar icon, start at login, formal trademark check on SearchBetter.
 
 ## Stage 1: file names (built 2026-10-29)
 
@@ -32,15 +32,14 @@ Before launch: setup screen that explains the folder prompts, Developer ID signi
 
 ## After the video
 
-- [ ] Small setup window with progress by folder
 - [ ] Stable signing, so a new build does not ask for folder access again
 - [ ] Read text in scanned PDFs with Apple Vision
 - [ ] Optional image model pass, if real searches show the labels are too general
 - [ ] Word, Excel and PowerPoint files
-- [ ] Ship llama-server and the model with the app, in place of the Homebrew and Hugging Face copies
+- [x] Ship llama-server in the app, download the model on a setup screen, pack a DMG
+- [ ] Friend test on another Mac: Open Anyway, three folder prompts, setup, search
 
 ## Later
 
 - Face tagging for "me" (LOG 2026-10-29)
 - Audio and video
-- Installer for other people

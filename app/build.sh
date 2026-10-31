@@ -8,12 +8,33 @@ CONTENTS="$APP/Contents"
 SDK="$(xcrun --show-sdk-path)"
 
 rm -rf "$APP"
-mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
+mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Helpers"
 
 swiftc -O -swift-version 5 -sdk "$SDK" -target arm64-apple-macos14.0 \
     -module-name MacSearch -framework AppKit -framework Carbon -framework CoreServices -framework PDFKit \
-    -framework ImageIO -framework UniformTypeIdentifiers -framework Vision -framework IOKit -lsqlite3 \
+    -framework ImageIO -framework CryptoKit -framework UniformTypeIdentifiers -framework Vision -framework IOKit -lsqlite3 \
     -o "$CONTENTS/MacOS/SearchBetter" Sources/*.swift
+
+# llama-server from the official llama.cpp release. It runs on macOS 13.3 and later and needs no Homebrew.
+# The Homebrew build needs the same macOS as the Mac that built it, so it cannot ship.
+LLAMA=b12020
+LLAMA_SHA=b630ebd5da34b02e86f7294dd5743aba842a0a02cb023130debd64599721c541
+VENDOR="build.noindex/vendor/llama-$LLAMA"
+if [ ! -x "$VENDOR/llama-server" ]; then
+    mkdir -p "$VENDOR"
+    TGZ="$(mktemp)"
+    curl -fsSL "https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA/llama-$LLAMA-bin-macos-arm64.tar.gz" -o "$TGZ"
+    echo "$LLAMA_SHA  $TGZ" | shasum -a 256 -c - >/dev/null
+    tar -xzf "$TGZ" -C "$VENDOR" --strip-components 1
+    rm -f "$TGZ"
+fi
+cp "$VENDOR/llama-server" "$CONTENTS/Helpers/"
+for lib in llama-server-impl llama-common.0 mtmd.0 llama.0 ggml.0 ggml-base.0 ggml-cpu.0 ggml-blas.0 ggml-metal.0 ggml-rpc.0; do
+    cp -L "$VENDOR/lib$lib.dylib" "$CONTENTS/Helpers/"
+done
+mkdir -p "$CONTENTS/Resources/licenses"
+cp Resources/licenses/* "$CONTENTS/Resources/licenses/"
+cp "$VENDOR/LICENSE" "$CONTENTS/Resources/licenses/llama.cpp-LICENSE.txt"
 
 # App icon, when Resources/AppIcon.png (1024 x 1024) exists.
 if [ -f Resources/AppIcon.png ]; then
@@ -48,5 +69,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# Inside out: the helper files first, then the app that seals them.
+codesign --force --sign - "$CONTENTS"/Helpers/*
 codesign --force --sign - --identifier space.thelaunch.macsearch "$APP"
 echo "built $APP"

@@ -1,18 +1,35 @@
 import Foundation
 
-/// Where the model and the llama.cpp server live on this Mac.
+/// Where the model and the llama.cpp server live.
+/// The server ships inside the app. The setup screen downloads the model.
 enum ModelFiles {
-    static let server = ["/opt/homebrew/bin/llama-server", "/usr/local/bin/llama-server"]
-        .first { FileManager.default.isExecutableFile(atPath: $0) }
+    static let model = "embeddinggemma-2-Q8_0.gguf"
 
-    static let dir: String? = {
+    static var helpers: String { Bundle.main.bundlePath + "/Contents/Helpers" }
+
+    static var server: String? {
+        let p = helpers + "/llama-server"
+        return FileManager.default.isExecutableFile(atPath: p) ? p : nil
+    }
+
+    /// The folder the setup screen downloads into.
+    static var ownDir: String { NSHomeDirectory() + "/Library/Application Support/mac-search/models" }
+
+    /// The app's own folder first. A Hugging Face cache copy saves a download on a developer Mac.
+    static var dir: String? {
         let hub = NSHomeDirectory() + "/.cache/huggingface/hub/models--ggml-org--embeddinggemma-2-GGUF/snapshots"
         let snaps = (try? FileManager.default.contentsOfDirectory(atPath: hub)) ?? []
-        return snaps.map { hub + "/" + $0 }.first { FileManager.default.fileExists(atPath: $0 + "/" + model) }
-    }()
+        return ([ownDir] + snaps.map { hub + "/" + $0 }).first { FileManager.default.fileExists(atPath: $0 + "/" + model) }
+    }
 
-    static let model = "embeddinggemma-2-Q8_0.gguf"
     static var available: Bool { server != nil && dir != nil }
+
+    /// A browser marks a download as quarantined, and the mark spreads to every file in the app.
+    /// Approving the app covers the app, so clear the mark on the helper files it runs.
+    static func clearHelperQuarantine() {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: helpers)) ?? []
+        for n in names { removexattr(helpers + "/" + n, "com.apple.quarantine", 0) }
+    }
 }
 
 /// One llama-server child process on a free local port.

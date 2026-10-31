@@ -17,16 +17,18 @@ To use it day to day, run `./install.sh`. It puts the app in /Applications, so S
 
 The first run may ask for access to Desktop, Documents and Downloads. Allow all three.
 
-File names work at once. To search inside files, choose "Start indexing file contents" from the
-menu bar icon. The menu line says what is ready. Passes run in this order: exact words, notes and
+File names work at once. The menu line says what is ready. Passes run in this order: exact words, notes and
 PDFs, images, code and data, then a full read of notes and PDFs. Model work stops while the search
 box is open, and below 50% battery. The full read runs only on power.
 
 A new build has a new ad hoc signature, so macOS asks for folder access again. Until someone allows
 it, the app waits and shows no results.
 
-It needs `llama-server` (`brew install llama.cpp`) and the model `ggml-org/embeddinggemma-2-GGUF`
-(Q8_0) in the Hugging Face cache.
+`build.sh` puts the official llama.cpp `llama-server` (release pinned in the script) in `Contents/Helpers`. The Homebrew build cannot ship: it needs the macOS of the Mac that built it. On first open the setup screen downloads the model `ggml-org/embeddinggemma-2-GGUF`, from a copy on this repo's `model-v1` release, to `~/Library/Application Support/mac-search/models`. A copy in the Hugging Face cache also counts, so a developer Mac skips setup.
+
+`./make-dmg.sh` builds `build.noindex/SearchBetter-<version>.dmg`.
+
+Test first run as a stranger, with no window and no keyboard use: set `CFFIXED_USER_HOME` to an empty folder and run the app binary with `--setup-auto`. `--render-setup <start|downloading|checking|failed|ready> --out x.png` draws the setup screen. `--ignore-power` runs model work on battery.
 
 | Key | Does |
 |---|---|

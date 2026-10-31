@@ -17,6 +17,10 @@ if let q = argValue("--render"), let out = argValue("--out") {
     Cli.render(root: rootArg, query: q, to: out)   // draws off screen, never takes the keyboard
 }
 
+if let stage = argValue("--render-setup"), let out = argValue("--out") {
+    SetupWindow.render(stage: stage, to: out)   // draws off screen, never takes the keyboard
+}
+
 let app = NSApplication.shared
 let delegate = AppDelegate(root: rootArg)
 app.delegate = delegate

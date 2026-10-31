@@ -26,7 +26,7 @@ final class Engine {
 
     init(root: String?) {
         files = FileIndex(root: root)
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].path + "/mac-search"
+        let base = NSHomeDirectory() + "/Library/Application Support/mac-search"
         dataDir = root.map { base + "/roots/" + Self.hash($0) } ?? base + "/home"
     }
 

@@ -335,6 +335,7 @@ final class Indexer {
     // MARK: Power
 
     private static func powerState() -> (onAC: Bool, percent: Int) {
+        if args.contains("--ignore-power") { return (true, 100) }   // for tests on a laptop on battery
         guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let list = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] else { return (true, 100) }
         var percent = 100

@@ -1,0 +1,11 @@
+SearchBetter uses these open source parts.
+
+llama.cpp (llama-server and its libraries, inside this app)
+  https://github.com/ggml-org/llama.cpp
+  MIT License. Full text: llama.cpp-LICENSE.txt
+
+EmbeddingGemma 2 (the search model, downloaded on first open)
+  https://huggingface.co/ggml-org/embeddinggemma-2-GGUF
+  This project hosts an unchanged copy of the Q8_0 file.
+  From https://huggingface.co/google/embeddinggemma-2
+  Apache License 2.0. Full text: Apache-2.0.txt
