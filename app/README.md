@@ -1,4 +1,4 @@
-# mac-search app
+# SearchBetter app
 
 A menu bar app. Option+Space opens a search box. Results show while you type.
 It searches file names, words inside files, and meaning in text, code, PDFs and images.
@@ -7,14 +7,15 @@ Nothing leaves the Mac.
 ## Build and check
 
     ./build.sh
-    build/mac-search.app/Contents/MacOS/mac-search --selftest
+    build.noindex/SearchBetter.app/Contents/MacOS/SearchBetter --selftest
 
 ## Run
 
-    open build/mac-search.app
+    open build.noindex/SearchBetter.app
 
-The first run may ask for access to Desktop, Documents and Downloads. Allow all three, then
-choose "Read all files again" from the menu bar icon.
+To use it day to day, run `./install.sh`. It puts the app in /Applications, so Spotlight and Launchpad can open it.
+
+The first run may ask for access to Desktop, Documents and Downloads. Allow all three.
 
 File names work at once. To search inside files, choose "Start indexing file contents" from the
 menu bar icon. The menu line says what is ready. Passes run in this order: exact words, notes and
@@ -39,21 +40,21 @@ It needs `llama-server` (`brew install llama.cpp`) and the model `ggml-org/embed
 
 These never open the search box or take the keyboard:
 
-    mac-search --selftest
-    mac-search --index --root <folder>                 # fill the index for one folder
-    mac-search --root <folder> --query "text"          # print results and times
-    mac-search --root <folder> --queries file.txt      # one search per line
-    mac-search --root <folder> --render "text" --out panel.png
+    SearchBetter --selftest
+    SearchBetter --index --root <folder>                 # fill the index for one folder
+    SearchBetter --root <folder> --query "text"          # print results and times
+    SearchBetter --root <folder> --queries file.txt      # one search per line
+    SearchBetter --root <folder> --render "text" --out panel.png
 
 Without `--root` these use the real index of the home folder.
 
 This one opens the search box for one folder, for recording a video:
 
-    open build/mac-search.app --args --root <folder>
+    open build.noindex/SearchBetter.app --args --root <folder>
 
 This one opens the box and takes the keyboard, so do not run it while someone uses the Mac:
 
-    mac-search --show "query" --snapshot /tmp/panel.png
+    SearchBetter --show "query" --snapshot /tmp/panel.png
 
 ## What it reads
 

@@ -28,6 +28,9 @@ final class MeaningIndex {
     private let writer = DispatchQueue(label: "mac-search.writer", qos: .utility)
     private var reader: OpaquePointer? // exact-word searches and row details
     private let readerQueue = DispatchQueue(label: "mac-search.reader", qos: .userInteractive)
+    // Apple's SQLite runs in multi-thread mode: one connection on two threads corrupts memory (crash of 2026-10-31).
+    private var details: OpaquePointer?
+    private let detailsQueue = DispatchQueue(label: "mac-search.details", qos: .userInteractive)
 
     private var rw = pthread_rwlock_t()
     private var bin: [UInt64] = []
@@ -62,11 +65,12 @@ final class MeaningIndex {
             CREATE TRIGGER IF NOT EXISTS pieces_ad AFTER DELETE ON pieces BEGIN
                 INSERT INTO words(words, rowid, text) VALUES ('delete', old.id, old.text); END;
             """)
-        guard sqlite3_open_v2(file, &reader, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return nil }
+        guard sqlite3_open_v2(file, &reader, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              sqlite3_open_v2(file, &details, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return nil }
         loadIntoRAM()
     }
 
-    deinit { sqlite3_close(db); sqlite3_close(reader) }
+    deinit { sqlite3_close(db); sqlite3_close(reader); sqlite3_close(details) }
 
     private func exec(_ sql: String) { sqlite3_exec(db, sql, nil, nil, nil) }
 
@@ -417,21 +421,25 @@ final class MeaningIndex {
     // MARK: Row details
 
     func piece(_ id: Int64) -> (line: Int, text: String)? {
-        var s: OpaquePointer?
-        sqlite3_prepare_v2(reader, "SELECT line, text FROM pieces WHERE id=?", -1, &s, nil)
-        defer { sqlite3_finalize(s) }
-        sqlite3_bind_int64(s, 1, id)
-        guard sqlite3_step(s) == SQLITE_ROW, let t = sqlite3_column_text(s, 1) else { return nil }
-        return (Int(sqlite3_column_int(s, 0)), String(cString: t))
+        detailsQueue.sync {
+            var s: OpaquePointer?
+            sqlite3_prepare_v2(details, "SELECT line, text FROM pieces WHERE id=?", -1, &s, nil)
+            defer { sqlite3_finalize(s) }
+            sqlite3_bind_int64(s, 1, id)
+            guard sqlite3_step(s) == SQLITE_ROW, let t = sqlite3_column_text(s, 1) else { return nil }
+            return (Int(sqlite3_column_int(s, 0)), String(cString: t))
+        }
     }
 
     func thumb(path: String) -> Data? {
-        var s: OpaquePointer?
-        sqlite3_prepare_v2(reader, "SELECT thumb FROM files WHERE path=?", -1, &s, nil)
-        defer { sqlite3_finalize(s) }
-        sqlite3_bind_text(s, 1, path, -1, SQLITE_TRANSIENT)
-        guard sqlite3_step(s) == SQLITE_ROW, let b = sqlite3_column_blob(s, 0) else { return nil }
-        return Data(bytes: b, count: Int(sqlite3_column_bytes(s, 0)))
+        detailsQueue.sync {
+            var s: OpaquePointer?
+            sqlite3_prepare_v2(details, "SELECT thumb FROM files WHERE path=?", -1, &s, nil)
+            defer { sqlite3_finalize(s) }
+            sqlite3_bind_text(s, 1, path, -1, SQLITE_TRANSIENT)
+            guard sqlite3_step(s) == SQLITE_ROW, let b = sqlite3_column_blob(s, 0) else { return nil }
+            return Data(bytes: b, count: Int(sqlite3_column_bytes(s, 0)))
+        }
     }
 
 }

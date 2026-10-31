@@ -17,6 +17,8 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
     private let table = NSTableView()
     private let scroll = NSScrollView()
     private let footer = NSTextField(labelWithString: "")
+    private let line = NSBox()
+    private let content = NSView()
     private var results: [ResultRow] = []
     private var thumbCache: [String: NSImage] = [:]
     private var userMoved = false
@@ -29,6 +31,11 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
     private let imageRowH: CGFloat = 84
     private let maxListH: CGFloat = 470
     private let footerH: CGFloat = 28
+    private let corner: CGFloat = 26     // close to a macOS 26 window
+    private var margin: CGFloat = 0
+    private var glassView: NSView?
+    private let softShadow = CALayer()
+    private let shadowHole = CAShapeLayer()
 
     init(engine: Engine) {
         self.engine = engine
@@ -50,15 +57,45 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         panel.hidesOnDeactivate = false
         panel.delegate = self
 
-        let bg = NSVisualEffectView()
-        bg.material = .popover
-        bg.state = .active
-        bg.blendingMode = .behindWindow
-        bg.wantsLayer = true
-        bg.layer?.cornerRadius = 14
-        bg.layer?.masksToBounds = true
+        // Liquid Glass on macOS 26. Older systems get Apple's plain blur.
+        let bg = content
         bg.autoresizingMask = [.width, .height]
-        panel.contentView = bg
+        if #available(macOS 26.0, *) {
+            // The glass draws its own edge light and shadow past its bounds. They need clear window around them,
+            // or the window's square corners show.
+            margin = 44
+            panel.hasShadow = false
+            let root = NSView(frame: NSRect(x: 0, y: 0, width: width + margin * 2, height: fieldH + margin * 2))
+            root.autoresizingMask = [.width, .height]
+            root.wantsLayer = true
+            // The window shadow would follow the square window, so a soft shadow is drawn around the glass only.
+            softShadow.shadowColor = NSColor.black.cgColor
+            softShadow.shadowOpacity = 0.28
+            softShadow.shadowRadius = 22
+            softShadow.shadowOffset = CGSize(width: 0, height: -10)
+            softShadow.mask = shadowHole
+            shadowHole.fillRule = .evenOdd
+            root.layer?.addSublayer(softShadow)
+            let g = NSGlassEffectView(frame: root.bounds.insetBy(dx: margin, dy: margin))
+            g.style = .regular
+            g.cornerRadius = corner
+            g.contentView = bg
+            root.addSubview(g)
+            glassView = g
+            panel.contentView = root
+        } else {
+            let v = NSVisualEffectView()
+            v.material = .popover
+            v.state = .active
+            v.blendingMode = .behindWindow
+            v.wantsLayer = true
+            v.layer?.cornerRadius = corner
+            v.layer?.masksToBounds = true
+            v.autoresizingMask = [.width, .height]
+            bg.frame = v.bounds
+            v.addSubview(bg)
+            panel.contentView = v
+        }
 
         let glass = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
         glass.symbolConfiguration = .init(pointSize: 20, weight: .regular)
@@ -68,8 +105,8 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 24, weight: .light)
-        field.placeholderString = "Search by name, by words, or by what you remember"
+        field.font = .systemFont(ofSize: 22, weight: .regular)
+        field.placeholderString = "SearchBetter  ·  type what you remember"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
         field.translatesAutoresizingMaskIntoConstraints = false
@@ -88,16 +125,14 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         table.doubleAction = #selector(openSelected)
         scroll.documentView = table
         scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        scroll.hasVerticalScroller = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let line = NSBox()
         line.boxType = .separator
         line.translatesAutoresizingMaskIntoConstraints = false
 
         footer.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        footer.textColor = .tertiaryLabelColor
+        footer.textColor = .secondaryLabelColor
         footer.translatesAutoresizingMaskIntoConstraints = false
 
         for v in [glass, field, line, scroll, footer] { bg.addSubview(v) }
@@ -108,16 +143,19 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
             field.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -20),
             field.centerYAnchor.constraint(equalTo: glass.centerYAnchor),
             line.topAnchor.constraint(equalTo: bg.topAnchor, constant: fieldH),
-            line.leadingAnchor.constraint(equalTo: bg.leadingAnchor),
-            line.trailingAnchor.constraint(equalTo: bg.trailingAnchor),
+            line.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 20),
+            line.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -20),
             scroll.topAnchor.constraint(equalTo: line.bottomAnchor),
             scroll.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 6),
             scroll.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -6),
             scroll.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -4),
             footer.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 20),
             footer.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -20),
-            footer.bottomAnchor.constraint(equalTo: bg.bottomAnchor, constant: -7),
         ])
+        // Low priority: the empty panel is shorter than the list and footer need, and must not grow to fit them.
+        let bottom = footer.bottomAnchor.constraint(equalTo: bg.bottomAnchor, constant: -7)
+        bottom.priority = .defaultLow
+        bottom.isActive = true
     }
 
     // MARK: Show and hide
@@ -131,7 +169,7 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         if let screen = NSScreen.main {
             let f = screen.visibleFrame
             let top = f.maxY - f.height * 0.22
-            panel.setFrameTopLeftPoint(NSPoint(x: f.midX - width / 2, y: top))
+            panel.setFrameTopLeftPoint(NSPoint(x: f.midX - width / 2 - margin, y: top + margin))
         }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
@@ -153,11 +191,54 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         }
     }
 
+    /// Off-screen check: Down reaches the last row, and a change on disk does not move the selection.
+    func arrowsReachEnd() -> Bool {
+        for _ in results { move(1) }
+        let end = table.selectedRow
+        refreshResults()
+        return end == results.count - 1 && table.selectedRow == end
+    }
+
+    /// Shows the real glass for a moment over a test backdrop, without taking the keyboard, and saves that area
+    /// to a PNG. Only the backdrop and the panel are in the picture, never what is on the screen.
+    func capture(to path: String) {
+        guard let screen = NSScreen.screens.first else { return }
+        let f = screen.visibleFrame
+        panel.setFrameOrigin(NSPoint(x: f.minX + 40, y: f.minY + 40))
+        let area = panel.frame.insetBy(dx: -20, dy: -20)
+        let back = NSWindow(contentRect: area, styleMask: .borderless, backing: .buffered, defer: false)
+        back.isReleasedWhenClosed = false
+        back.level = .modalPanel
+        let tile = NSImage(size: area.size, flipped: false) { r in
+            switch ProcessInfo.processInfo.environment["BACKDROP"] {
+            case "dark": NSColor(white: 0.12, alpha: 1).setFill(); r.fill()
+            case "light": NSColor(white: 0.96, alpha: 1).setFill(); r.fill()
+            default: NSGradient(colors: [.white, .systemTeal, .black, .systemOrange])?.draw(in: r, angle: 20)
+            }
+            return true
+        }
+        back.contentView = NSImageView(image: tile)
+        back.orderFrontRegardless()
+        panel.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [self] in
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            let y = screen.frame.maxY - area.maxY
+            p.arguments = ["-x", "-R", "\(Int(area.minX)),\(Int(y)),\(Int(area.width)),\(Int(area.height))", path]
+            try? p.run()
+            p.waitUntilExit()
+            panel.orderOut(nil)
+            back.orderOut(nil)
+            print("panel \(panel.frame.size)")
+        }
+    }
+
     /// Draws the panel into a PNG. Works without a screen, for checks and demos.
     func snapshot(to path: String) {
-        guard let v = panel.contentView else { return }
+        // The glass cannot draw off screen, because it samples what sits behind the window. This shows the contents.
+        let v = content
+        panel.contentView?.layoutSubtreeIfNeeded()
         v.layoutSubtreeIfNeeded()
-        (v as? NSVisualEffectView)?.material = .windowBackground
         guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
         v.cacheDisplay(in: v.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
@@ -173,22 +254,45 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
 
     func windowDidResignKey(_ notification: Notification) { if panel.isVisible { hide() } }
 
+    private func updateShadow(width w: CGFloat, height h: CGFloat) {
+        guard margin > 0 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let all = CGRect(x: 0, y: 0, width: w + margin * 2, height: h + margin * 2)
+        // Set directly: autoresizing distorts the glass when the window starts smaller than its margins need.
+        glassView?.frame = all.insetBy(dx: margin, dy: margin)
+        let shape = CGPath(roundedRect: all.insetBy(dx: margin, dy: margin), cornerWidth: corner, cornerHeight: corner, transform: nil)
+        softShadow.frame = all
+        softShadow.shadowPath = shape
+        shadowHole.frame = all
+        let hole = CGMutablePath()
+        hole.addRect(all)
+        hole.addPath(shape)
+        shadowHole.path = hole   // the shadow must not show through the glass
+        CATransaction.commit()
+    }
+
     private func resize() {
         let rows = results.count
         let listH = rows > 0 ? min(maxListH, results.reduce(8) { $0 + height($1) }) : 0
         let h = fieldH + listH + (field.stringValue.isEmpty ? 0 : footerH)
         var f = panel.frame
         let top = f.maxY
-        f.size = NSSize(width: width, height: h)
+        f.size = NSSize(width: width + margin * 2, height: h + margin * 2)
         f.origin.y = top - h
         panel.setFrame(f, display: true)
+        updateShadow(width: width, height: h)
         scroll.isHidden = rows == 0
+        line.isHidden = rows == 0
         footer.isHidden = field.stringValue.isEmpty
     }
 
     // MARK: Searching
 
     func controlTextDidChange(_ obj: Notification) { runSearch() }
+
+    /// Files changed on disk. The list stays still once the user moves through it, so the selection cannot jump.
+    func refreshResults() { if !userMoved { runSearch() } }
 
     func runSearch() {
         let q = field.stringValue.trimmingCharacters(in: .whitespaces)
@@ -218,8 +322,8 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         let n = NumberFormatter.localizedString(from: NSNumber(value: index.liveCount), number: .decimal)
         var status = indexing ? "reading your files… \(n) so far" : "\(n) files"
         if let idx = engine.indexer, idx.isActive { status = idx.status }
-        let found = results.isEmpty ? "no matches" : "\(results.count == 30 ? "30+" : "\(results.count)") results"
-        footer.stringValue = String(format: "%@ in %.2f ms   ·   %@   ·   ↩ open   ⌘↩ show in Finder", found, lastMs, status)
+        let found = results.isEmpty ? "no matches" : results.count == 1 ? "1 result" : "\(results.count) results"
+        footer.stringValue = String(format: "%@ in %.0f ms   ·   %@   ·   ↩ open   ⌘↩ show in Finder", found, lastMs, status)
     }
 
     // MARK: Keys
@@ -269,6 +373,8 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { height(results[row]) }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { GlassRow() }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = (tableView.makeView(withIdentifier: ResultCell.id, owner: nil) as? ResultCell) ?? ResultCell()
         let r = results[row]
@@ -295,7 +401,14 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
 
     private func thumbnail(_ p: String) -> NSImage? {
         if let i = thumbCache[p] { return i }
-        guard let d = engine.thumbnail(path: p), let i = NSImage(data: d) else { return nil }
+        guard let d = engine.thumbnail(path: p), let src = NSImage(data: d), src.size.width > 0, src.size.height > 0 else { return nil }
+        // Round the picture itself. Rounding its view leaves sharp corners when the picture does not fill the view.
+        let scale = 70 / max(src.size.width, src.size.height)
+        let i = NSImage(size: src.size, flipped: false) { r in
+            NSBezierPath(roundedRect: r, xRadius: 10 / scale, yRadius: 10 / scale).addClip()
+            src.draw(in: r)
+            return true
+        }
         if thumbCache.count > 500 { thumbCache.removeAll() }
         thumbCache[p] = i
         return i
@@ -307,6 +420,15 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         if iconCache.count > 2000 { iconCache.removeAll() }
         iconCache[p] = i
         return i
+    }
+}
+
+/// A soft rounded selection that sits on the glass, in place of the system's solid bar.
+final class GlassRow: NSTableRowView {
+    override var isEmphasized: Bool { get { false } set {} }
+    override func drawSelection(in dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.12).setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 2), xRadius: 14, yRadius: 14).fill()
     }
 }
 
@@ -327,9 +449,6 @@ final class ResultCell: NSTableCellView {
         subtitle.textColor = .secondaryLabelColor
         subtitle.lineBreakMode = .byTruncatingHead
         icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.wantsLayer = true
-        icon.layer?.cornerRadius = 6
-        icon.layer?.masksToBounds = true
         for v in [icon, title, subtitle] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         iconW = icon.widthAnchor.constraint(equalToConstant: 30)
         iconH = icon.heightAnchor.constraint(equalToConstant: 30)

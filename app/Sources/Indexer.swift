@@ -48,6 +48,8 @@ final class Indexer {
     }
     var isPaused: Bool { cond.lock(); defer { cond.unlock() }; return userPaused }
     var isActive: Bool { cond.lock(); defer { cond.unlock() }; return phase != .done && phase != .idle }
+    /// True until every file is searchable. The deep read after that runs quietly.
+    var showsProgress: Bool { cond.lock(); defer { cond.unlock() }; return userPaused || (phase != .done && phase != .idle && phase != .deep) }
 
     func setPaused(_ p: Bool) { cond.lock(); userPaused = p; cond.broadcast(); cond.unlock() }
 

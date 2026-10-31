@@ -21,7 +21,7 @@ enum Cli {
     /// Draws the panel with results into a PNG. The window stays off screen and never takes the keyboard.
     static func render(root: String?, query: String, to out: String) -> Never {
         let app = NSApplication.shared
-        app.setActivationPolicy(.prohibited)
+        app.setActivationPolicy(CommandLine.arguments.contains("--capture") ? .accessory : .prohibited)
         let engine = Engine(root: root)
         engine.files.load(FileIndex.walk(home: engine.files.home, includeApps: engine.files.includeApps))
         DispatchQueue.global().async {
@@ -33,9 +33,13 @@ enum Cli {
                     guard final else { return }
                     panel.render(query) {
                         panel.snapshot(to: out)
-                        engine.shutdown()
-                        usleep(300_000)
-                        exit(0)
+                        if CommandLine.arguments.contains("--capture") { panel.capture(to: out + ".glass.png"); usleep(0) }
+                        if CommandLine.arguments.contains("--arrows") { print("arrows reach the end: \(panel.arrowsReachEnd())") }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + (CommandLine.arguments.contains("--capture") ? 1.5 : 0)) {
+                            engine.shutdown()
+                            usleep(300_000)
+                            exit(0)
+                        }
                     }
                 }
             }

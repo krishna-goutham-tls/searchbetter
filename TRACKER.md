@@ -1,6 +1,8 @@
 # Tracker
 
-Next: time the new indexing passes on Krishna's Mac, then he tries his real searches. Then record the video (LOG 2026-10-30).
+Next: add the app icon, then Krishna records the Spotlight race on his own account and the agent checks every frame. Then the landing page at searchbetter.thelaunch.space.
+
+Before launch: setup screen that explains the folder prompts, Developer ID signing, menu bar icon, start at login, formal trademark check on SearchBetter.
 
 ## Stage 1: file names (built 2026-10-29)
 

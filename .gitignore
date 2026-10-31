@@ -3,3 +3,4 @@ bin/
 .venv/
 __pycache__/
 build/
+build.noindex/

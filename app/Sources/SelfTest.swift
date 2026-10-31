@@ -1,6 +1,6 @@
 import Foundation
 
-/// `mac-search --selftest`: builds the index, types sample searches one key at a time,
+/// `SearchBetter --selftest`: builds the index, types sample searches one key at a time,
 /// checks live updates, and prints times. Exit code 0 means every check passed.
 enum SelfTest {
     static func run() -> Int32 {
@@ -109,6 +109,13 @@ enum SelfTest {
             else { m.remove(path: p) }
         }
         check(true, "writes from many threads do not crash")
+        // Regression: row details drawn on the main thread while an exact search runs (crash of 2026-10-31).
+        put("d.txt", "The oven trips the circuit breaker again.")
+        let id = m.search(v).text.first?.pieceID ?? 1
+        DispatchQueue.concurrentPerform(iterations: 4000) { i in
+            if i % 2 == 0 { m.exact("circuit brea") { _ in } } else { _ = m.piece(id); _ = m.thumb(path: dir + "/d.txt") }
+        }
+        check(true, "exact search and row details together do not crash")
         var t: [Double] = []
         let q = server.embed(texts: ["task: search result | query: test"])!.first!
         for _ in 0..<50 { let t0 = DispatchTime.now().uptimeNanoseconds; _ = m.search(q); t.append(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6) }
