@@ -10,6 +10,19 @@ It needs a Mac with Apple silicon (M1 or later) and macOS 14 or later. So far it
 
 Open the disk image and drag SearchBetter to Applications. The app has no Apple Developer ID yet, so macOS will most likely block it the first time. If it does, click Done, go to System Settings > Privacy & Security, scroll down and click Open Anyway.
 
+### Install with an AI agent
+
+If you use Claude Code, Codex or another agent that can run commands, ask it to install SearchBetter. These are the steps it runs:
+
+    curl -L -o /tmp/SearchBetter.dmg https://github.com/krishna-goutham-tls/searchbetter/releases/latest/download/SearchBetter.dmg
+    hdiutil attach -nobrowse -quiet /tmp/SearchBetter.dmg
+    ditto /Volumes/SearchBetter/SearchBetter.app /Applications/SearchBetter.app
+    hdiutil detach -quiet /Volumes/SearchBetter
+    xattr -dr com.apple.quarantine /Applications/SearchBetter.app
+    open /Applications/SearchBetter.app
+
+The `xattr` line lifts the macOS download block for this one app, the same thing Open Anyway does. After the app opens, you finish the rest yourself: the setup screen downloads the search model, and macOS asks once for each folder.
+
 On first open, the setup screen downloads a 310 MB search model. macOS then asks for access to Desktop, Documents and Downloads, once for each folder.
 
 The first read of your files can take 15 minutes or more. File names are searchable right away, and search finds more as the reading goes on. Keep the Mac plugged in for this. Below 50% battery, the reading waits for power.
