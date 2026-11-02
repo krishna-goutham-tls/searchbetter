@@ -6,6 +6,22 @@ Search your Mac by typing what you remember. Press Option + Space and type "code
 
 It needs a Mac with Apple silicon (M1 or later) and macOS 14 or later. So far it has been tested only on macOS 26.
 
+## What a search looks like
+
+Find a photo by what it shows:
+
+![Typing "cat on a sofa" finds the one photo of a cat on a sofa, named IMG_1031.jpg](docs/search-photo.gif)
+
+Find a document by what it is about. This file never uses the word "refund":
+
+![Typing "can a customer get a refund" finds final_v3.md, the customer policy](docs/search-meaning.gif)
+
+Find a file by the words inside it:
+
+![Typing "Park Street lease" finds draft.txt, a letter about the shop lease](docs/search-words.gif)
+
+Each frame is the real app's result for the letters typed so far, on a demo folder of 126 files. The footer shows the real search time.
+
 ## Install
 
 Open the disk image and drag SearchBetter to Applications. The app has no Apple Developer ID yet, so macOS will most likely block it the first time. If it does, click Done, go to System Settings > Privacy & Security, scroll down and click Open Anyway.
