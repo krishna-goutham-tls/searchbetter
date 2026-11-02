@@ -1,0 +1,107 @@
+{
+ "total": 39.22,
+ "caps": [
+  {
+   "from": 0,
+   "to": 2.12,
+   "text": "So I tried some little {experiment}"
+  },
+  {
+   "from": 2.12,
+   "to": 5.02,
+   "text": "So basically, Apple {Spotlight} search,"
+  },
+  {
+   "from": 6.12,
+   "to": 7.82,
+   "text": "I mean, it {takes time},"
+  },
+  {
+   "from": 7.82,
+   "to": 11.92,
+   "text": "or it doesn't {fetch} actual files that are there"
+  },
+  {
+   "from": 11.92,
+   "to": 13.42,
+   "text": "So what we've {built} is"
+  },
+  {
+   "from": 13.42,
+   "to": 15.52,
+   "text": "a {slightly different} search bar,"
+  },
+  {
+   "from": 15.52,
+   "to": 16.32,
+   "text": "or whatever you call it"
+  },
+  {
+   "from": 16.32,
+   "to": 17.37,
+   "text": "like, for example,"
+  },
+  {
+   "from": 18.62,
+   "to": 22.07,
+   "text": "it then {real-time} looks at all the {pictures}"
+  },
+  {
+   "from": 22.07,
+   "to": 23.32,
+   "text": "These are, for example, some of the pictures"
+  },
+  {
+   "from": 23.32,
+   "to": 25.22,
+   "text": "and literally {every picture} has like an"
+  },
+  {
+   "from": 25.22,
+   "to": 26.77,
+   "text": "{orange cat} in between"
+  },
+  {
+   "from": 26.77,
+   "to": 29.34,
+   "text": "and it's a little {faster}"
+  },
+  {
+   "from": 29.34,
+   "to": 29.72,
+   "text": "So yeah,"
+  },
+  {
+   "from": 29.72,
+   "to": 31.37,
+   "text": "it's {live}, it's in {beta}"
+  },
+  {
+   "from": 31.37,
+   "to": 34.22,
+   "text": "a short, fun little {project} that I've done"
+  },
+  {
+   "from": 34.22,
+   "to": 35.17,
+   "text": "See if it works out"
+  },
+  {
+   "from": 35.17,
+   "to": 37.82,
+   "text": "and please do share {feedback}"
+  }
+ ],
+ "marks": {
+  "spotlightIn": 5.02,
+  "spotlightOut": 11.92,
+  "oursIn": 13.42,
+  "oursOut": 16.32,
+  "zoom": 18.97,
+  "cats": 23.32,
+  "catsOut": 26.77,
+  "faster": 26.77,
+  "fasterOut": 29.34,
+  "end": 34.22
+ }
+}
