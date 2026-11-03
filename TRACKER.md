@@ -1,6 +1,6 @@
 # Tracker
 
-Next: friend test on another Mac, then Krishna records the Spotlight race on his own account and the agent checks every frame. Then the landing page at searchbetter.thelaunch.space.
+Done: friend test (2026-10-31), launch video with the Spotlight race (v4, 2026-11-02), landing page at thelaunch.space/tools/searchbetter (2026-11-03).
 
 Before launch: Developer ID signing, menu bar icon, start at login, formal trademark check on SearchBetter.
 
