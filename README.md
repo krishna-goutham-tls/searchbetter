@@ -24,7 +24,7 @@ Each frame is the real app's result for the letters typed so far, on a demo fold
 
 ## Install
 
-Open the disk image and drag SearchBetter to Applications. The app has no Apple Developer ID yet, so macOS will most likely block it the first time. If it does, click Done, go to System Settings > Privacy & Security, scroll down and click Open Anyway.
+[Download SearchBetter.dmg](https://github.com/krishna-goutham-tls/searchbetter/releases/latest/download/SearchBetter.dmg), open it and drag SearchBetter to Applications. The app is signed with a Developer ID and notarized by Apple, so it opens like any app.
 
 ### Install with an AI agent
 
@@ -34,10 +34,9 @@ If you use Claude Code, Codex or another agent that can run commands, ask it to 
     hdiutil attach -nobrowse -quiet /tmp/SearchBetter.dmg
     ditto /Volumes/SearchBetter/SearchBetter.app /Applications/SearchBetter.app
     hdiutil detach -quiet /Volumes/SearchBetter
-    xattr -dr com.apple.quarantine /Applications/SearchBetter.app
     open /Applications/SearchBetter.app
 
-The `xattr` line lifts the macOS download block for this one app, the same thing Open Anyway does. After the app opens, you finish the rest yourself: the setup screen downloads the search model, and macOS asks once for each folder.
+After the app opens, you finish the rest yourself: the setup screen downloads the search model, and macOS asks once for each folder.
 
 On first open, the setup screen downloads a 310 MB search model. macOS then asks for access to Desktop, Documents and Downloads, once for each folder.
 

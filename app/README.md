@@ -26,7 +26,7 @@ it, the app waits and shows no results.
 
 `build.sh` puts the official llama.cpp `llama-server` (release pinned in the script) in `Contents/Helpers`. The Homebrew build cannot ship: it needs the macOS of the Mac that built it. On first open the setup screen downloads the model `ggml-org/embeddinggemma-2-GGUF`, from a copy on this repo's `model-v1` release, to `~/Library/Application Support/mac-search/models`. A copy in the Hugging Face cache also counts, so a developer Mac skips setup.
 
-`./make-dmg.sh` builds `build.noindex/SearchBetter-<version>.dmg`.
+`./make-dmg.sh` builds an unsigned `build.noindex/SearchBetter-<version>.dmg` for local tests. To release, raise the version in `build.sh`, run `./build.sh`, then the shared kit: `active-tls/mac-release/repo/release.sh build.noindex/SearchBetter.app --publish krishna-goutham-tls/searchbetter`. It signs `llama-server` and its libraries, notarizes, and publishes `SearchBetter.dmg`.
 
 Test first run as a stranger, with no window and no keyboard use: set `CFFIXED_USER_HOME` to an empty folder and run the app binary with `--setup-auto`. `--render-setup <start|downloading|checking|failed|ready> --out x.png` draws the setup screen. `--ignore-power` runs model work on battery.
 
