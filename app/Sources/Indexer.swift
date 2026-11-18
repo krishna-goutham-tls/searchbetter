@@ -78,6 +78,21 @@ final class Indexer {
     /// True until every file is searchable. The deep read after that runs quietly.
     var showsProgress: Bool { cond.lock(); defer { cond.unlock() }; return userPaused || (phase != .done && phase != .idle && phase != .deep) }
 
+    /// A folder was skipped: drop its queued work and remove what the index holds for it.
+    func forget(folder: String) {
+        let inside: (String) -> Bool = { $0.hasPrefix(folder + "/") }
+        cond.lock()
+        urgent.removeAll(where: inside)
+        notes.removeAll { inside($0.path) }
+        images.removeAll { inside($0.path) }
+        code.removeAll { inside($0.path) }
+        cond.unlock()
+        DispatchQueue.global(qos: .utility).async { [self] in
+            for p in index.known().keys where inside(p) { index.remove(path: p) }
+            onProgress?()
+        }
+    }
+
     func setPaused(_ p: Bool) { cond.lock(); userPaused = p; cond.broadcast(); cond.unlock() }
 
     /// The search box is open.
@@ -110,7 +125,7 @@ final class Indexer {
     /// A file changed on disk. Runs next, even if the queue is long.
     func touch(_ path: String) {
         var st = stat()
-        if lstat(path, &st) != 0 {
+        if lstat(path, &st) != 0 || Skips.shared.skipsContent(path, home: home) {
             DispatchQueue.global(qos: .utility).async { [self] in index.remove(path: path); onProgress?() }
             return
         }
@@ -164,10 +179,12 @@ final class Indexer {
     private func readWords(_ paths: [String]) {
         setPhase(.words)
         let known = index.known()
-        let live = Set(paths)
+        // Files in skipped folders leave the index here too, so a skip made while the app was closed takes effect.
+        let readable = paths.filter { !Skips.shared.skipsContent($0, home: home) }
+        let live = Set(readable)
         for (p, _) in known where !live.contains(p) { index.remove(path: p) }
         var todo: [(path: String, mtime: Int64, size: Int64, kind: TextReader.Kind)] = []
-        for p in paths {
+        for p in readable {
             guard let k = TextReader.kind(of: p) else { continue }
             var st = stat()
             guard lstat(p, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { continue }

@@ -4,6 +4,7 @@
 
 - [x] In-app updater (2026-11-18, not released): daily GitHub check, update window, one-click install with a Developer ID check, "Check for updates…" in the menu. Tested against the real GitHub release
 - [x] First release with the updater: 0.1.2 (2026-11-18). Copies from before it never update themselves
+- [x] 0.1.4 (2026-11-18): skipped folders. Right-click a result or Shift+Command+Delete, undo in the menu bar, plus `.noindex` and `.metadata_never_index` markers. Names stay searchable
 - [x] 0.1.3 (2026-11-18): indexing never slows the Mac. Rests after each job, deep read only when the person is away, waits in Low Power Mode, heat and GPU use by other apps, short GPU requests, background priority, deep read capped at 30 pieces per file
 
 Done: friend test (2026-10-31), launch video with the Spotlight race (v4, 2026-11-02), landing page at thelaunch.space/tools/searchbetter (2026-11-03).

@@ -276,6 +276,9 @@ final class MeaningIndex {
             exec("BEGIN")
             var pid: Int64?
             var q: [Int8]?
+            // The file may have left the index while Vision read it (deleted, or its folder skipped).
+            pthread_rwlock_rdlock(&rw); let alive = paths[fileID] != nil; pthread_rwlock_unlock(&rw)
+            if !alive { exec("COMMIT"); return }
             if let text, let vector {
                 let v = Self.quantize(vector)
                 var s: OpaquePointer?

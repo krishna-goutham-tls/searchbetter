@@ -1,6 +1,6 @@
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let root: String?
     private let engine: Engine
     private var index: FileIndex { engine.files }
@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotKeyWarning = NSMenuItem(title: "Option+Space is taken by another app", action: nil, keyEquivalent: "")
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let meaningItem = NSMenuItem(title: "Finish Setup", action: #selector(toggleMeaning), keyEquivalent: "")
+    private let skipsItem = NSMenuItem(title: "Skipped Folders", action: nil, keyEquivalent: "")
     private var setup: SetupWindow?
     private var servicesStarted = false
     private var walkDone = false
@@ -49,9 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(statusLine)
         statusLine.isHidden = true
         menu.addItem(meaningItem)
+        let skipsMenu = NSMenu()
+        skipsMenu.delegate = self
+        skipsItem.submenu = skipsMenu
+        menu.addItem(symbol(skipsItem, "folder.badge.minus"))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SearchBetter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        for i in menu.items { i.target = i.action == #selector(NSApplication.terminate(_:)) ? NSApp : self }
+        for i in menu.items where i.action != nil { i.target = i.action == #selector(NSApplication.terminate(_:)) ? NSApp : self }
         menu.insertItem(Updater.shared.menuItem, at: menu.items.count - 1)
         statusItem.menu = menu
         Updater.shared.start()
@@ -113,9 +118,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuild()
         watcher = Watcher(roots: index.includeApps ? [index.home, "/Applications"] : [index.home]) { [weak self] paths in
             guard let self else { return }
+            var markerChanged = false
             for p in paths {
+                if (p as NSString).lastPathComponent == Skips.marker { markerChanged = true }
                 self.index.update(path: p)
                 if !self.index.isSkipped(p) { self.engine.indexer?.touch(p) }
+            }
+            // A `.metadata_never_index` file came or went: read the list again against the markers.
+            if markerChanged {
+                Skips.shared.forgetMarkers()
+                self.engine.indexer?.start(paths: self.index.paths)
             }
             self.refreshCount()
             if self.panel.isVisible { self.panel.refreshResults() }
@@ -157,6 +169,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) { Guardian.cleanExit(); engine.shutdown() }
+
+    // MARK: Skipped folders
+
+    /// Built each time it opens: one line per skipped folder (click to read it again), then "Skip a Folder…".
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === skipsItem.submenu else { return }
+        menu.removeAllItems()
+        let folders = Skips.shared.folders
+        let header = NSMenuItem(title: folders.isEmpty ? "No skipped folders" : "Click a folder to read it again", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        for f in folders {
+            let title = f.hasPrefix(index.home) ? "~" + f.dropFirst(index.home.count) : f
+            let item = NSMenuItem(title: title, action: #selector(unskip(_:)), keyEquivalent: "")
+            item.representedObject = f
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let add = NSMenuItem(title: "Skip a Folder…", action: #selector(chooseSkip), keyEquivalent: "")
+        add.target = self
+        menu.addItem(add)
+        let help = NSMenuItem(title: "Names stay searchable. Folders ending in .noindex are skipped too.", action: nil, keyEquivalent: "")
+        help.isEnabled = false
+        menu.addItem(help)
+    }
+
+    @objc private func unskip(_ sender: NSMenuItem) {
+        guard let f = sender.representedObject as? String else { return }
+        engine.unskip(folder: f)
+    }
+
+    @objc private func chooseSkip() {
+        NSApp.activate(ignoringOtherApps: true)
+        let open = NSOpenPanel()
+        open.canChooseFiles = false
+        open.canChooseDirectories = true
+        open.allowsMultipleSelection = true
+        open.directoryURL = URL(fileURLWithPath: index.home)
+        open.prompt = "Skip"
+        open.message = "SearchBetter will stop reading what is inside. File names stay searchable."
+        guard open.runModal() == .OK else { return }
+        for url in open.urls where url.path.hasPrefix(index.home + "/") { engine.skip(folder: url.path) }
+    }
 
     // MARK: Meaning index
 

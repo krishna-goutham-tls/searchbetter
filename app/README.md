@@ -43,6 +43,8 @@ Test first run as a stranger, with no window and no keyboard use: set `CFFIXED_U
 | Return | Open the file |
 | Command+Return | Show the file in Finder |
 | Esc | Clear the search, then close |
+| Shift+Command+Delete | Skip the folder that holds the selected result |
+| Right-click a result | Skip one of the folders above it, or show it in Finder |
 
 ## Flags
 
@@ -69,6 +71,12 @@ This one opens the box and takes the keyboard, so do not run it while someone us
 The home folder, minus junk that exists on any Mac: hidden folders, `~/Library`,
 `node_modules`, `.git`, `build`, `dist`, `venv`, lock files. Plus apps in `/Applications`
 and `/System/Applications`. FSEvents keeps the list current.
+
+Skipped folders (`Sources/Skips.swift`): SearchBetter does not read what is inside them, and removes what it
+already stored. File names stay searchable. A folder counts as skipped when the person skipped it (right-click
+a result, Shift+Command+Delete, or "Skipped Folders" in the menu bar, which also undoes a skip), when its name
+ends in `.noindex`, or when it holds a `.metadata_never_index` file. The last two are the markers Spotlight
+honours, so a script can mark its own output folder.
 
 Inside files, it reads text and code files up to 1 MB and PDFs up to 100 MB. For images of at least
 160 by 300 pixels, Apple's on-device recognition supplies labels and any text in the image. It never reads key files or files with `secret`, `password`, `token`, `credential` or

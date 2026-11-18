@@ -20,6 +20,8 @@ enum SelfTest {
         check(idx.isSkipped(idx.home + "/Library/Caches/a"), "skip: ~/Library")
         check(!idx.isSkipped(idx.home + "/Desktop/notes.md"), "keep: Desktop file")
 
+        skipChecks(check)
+
         var t0 = DispatchTime.now().uptimeNanoseconds
         let entries = FileIndex.walk(home: idx.home)
         idx.load(entries)
@@ -65,6 +67,29 @@ enum SelfTest {
 
         print(failures == 0 ? "all checks passed" : "\(failures) checks failed")
         return failures == 0 ? 0 : 1
+    }
+
+    /// Skipped folders: the person's list, folders inside it, `.noindex` names and marker files. Never touches the saved list.
+    private static func skipChecks(_ check: (Bool, String) -> Void) {
+        let home = NSTemporaryDirectory() + "macsearch-skips-\(Int.random(in: 100_000...999_999))"
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let fm = FileManager.default
+        for d in ["dumps/batches", "notes", "build.noindex/out", "marked/deep"] { try? fm.createDirectory(atPath: home + "/" + d, withIntermediateDirectories: true) }
+        fm.createFile(atPath: home + "/marked/" + Skips.marker, contents: nil)
+        let s = Skips(saved: false)
+        check(!s.skipsContent(home + "/dumps/batches/a.txt", home: home), "skips: nothing skipped at first")
+        s.add(home + "/dumps/batches")
+        check(s.skipsContent(home + "/dumps/batches/a.txt", home: home), "skips: a skipped folder")
+        check(!s.skipsContent(home + "/dumps/batchesX/a.txt", home: home), "skips: a folder with a longer name is not inside it")
+        s.add(home + "/dumps")
+        check(s.folders == [home + "/dumps"], "skips: the outer folder replaces the inner one")
+        s.add(home + "/dumps/batches")
+        check(s.folders.count == 1, "skips: a folder inside a skipped one adds nothing")
+        check(s.skipsContent(home + "/build.noindex/out/x.md", home: home), "skips: a folder ending in .noindex")
+        check(s.skipsContent(home + "/marked/deep/x.md", home: home), "skips: a folder with \(Skips.marker)")
+        check(!s.skipsContent(home + "/notes/x.md", home: home), "skips: other folders are read")
+        s.remove(home + "/dumps")
+        check(!s.skipsContent(home + "/dumps/batches/a.txt", home: home), "skips: undo reads the folder again")
     }
 
     /// Index a temporary folder with the real model: meaning, exact words, change and delete.

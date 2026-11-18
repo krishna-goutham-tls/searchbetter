@@ -49,6 +49,31 @@ final class Engine {
 
     func shutdown() { encoder.stop(); indexer?.stop() }
 
+    // MARK: Skipped folders
+
+    /// Stops reading a folder's contents and removes what the index holds for it. Names stay searchable.
+    func skip(folder: String) {
+        Skips.shared.add(folder)
+        indexer?.forget(folder: folder)
+    }
+
+    /// Reads a skipped folder again. Main thread.
+    func unskip(folder: String) {
+        Skips.shared.remove(folder)
+        indexer?.start(paths: files.paths)
+    }
+
+    /// The folders above `path` that a person may want to skip, nearest first, at most 5, never the home folder.
+    func skipChoices(for path: String) -> [String] {
+        var out: [String] = []
+        var dir = (path as NSString).deletingLastPathComponent
+        while dir.hasPrefix(files.home + "/"), out.count < 5 {
+            out.append(dir)
+            dir = (dir as NSString).deletingLastPathComponent
+        }
+        return out
+    }
+
     // MARK: Search
 
     /// Main thread. `update` runs on the main thread, once in the normal case. `final` is true on the last call.

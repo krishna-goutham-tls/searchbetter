@@ -7,7 +7,7 @@ final class KeyPanel: NSPanel {
 }
 
 /// The search box: a text field, a result list and a footer with the search time.
-final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
+final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSMenuDelegate {
     let engine: Engine
     var index: FileIndex { engine.files }
     var indexing = true
@@ -44,7 +44,18 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
                          backing: .buffered, defer: false)
         super.init()
         build()
+        let menu = NSMenu()
+        menu.delegate = self
+        table.menu = menu
+        // Shift+Command+Delete skips the selected result's folder. Command+Delete alone still clears the search box.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard let self, self.panel.isKeyWindow, e.keyCode == 51,
+                  e.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift] else { return e }
+            self.skipSelectedFolder()
+            return nil
+        }
     }
+    private var keyMonitor: Any?
 
     private func build() {
         panel.isFloatingPanel = true
@@ -318,7 +329,19 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
 
     private func height(_ r: ResultRow) -> CGFloat { r.isImage ? imageRowH : rowH }
 
+    private var note: String?
+    private var noteTimer: Timer?
+
+    /// Shows a short message in the footer for a few seconds.
+    private func flash(_ text: String) {
+        note = text
+        noteTimer?.invalidate()
+        noteTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in self?.note = nil; self?.updateFooter() }
+        updateFooter()
+    }
+
     func updateFooter() {
+        if let note { footer.stringValue = note; return }
         let n = NumberFormatter.localizedString(from: NSNumber(value: index.liveCount), number: .decimal)
         var status = indexing ? "reading your files… \(n) so far" : "\(n) files"
         if let idx = engine.indexer, idx.isActive { status = idx.status }
@@ -354,6 +377,57 @@ final class SearchPanel: NSObject, NSTextFieldDelegate, NSTableViewDataSource, N
         let r = table.selectedRow
         return r >= 0 && r < results.count ? results[r].path : nil
     }
+
+    // MARK: Skipping a folder
+
+    /// Right-click a result: skip one of the folders above it.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
+        guard row >= 0, row < results.count else { return }
+        let path = results[row].path
+        let header = NSMenuItem(title: "Stop reading what is inside", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        for (i, dir) in engine.skipChoices(for: path).enumerated() {
+            let item = NSMenuItem(title: "Skip \((dir as NSString).lastPathComponent)", action: #selector(skipFolder(_:)), keyEquivalent: i == 0 ? "\u{8}" : "")
+            if i == 0 { item.keyEquivalentModifierMask = [.command, .shift] }
+            item.toolTip = shortPath(dir)
+            item.representedObject = dir
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let reveal = NSMenuItem(title: "Show in Finder", action: #selector(revealClicked(_:)), keyEquivalent: "")
+        reveal.representedObject = path
+        reveal.target = self
+        menu.addItem(reveal)
+    }
+
+    @objc private func skipFolder(_ sender: NSMenuItem) {
+        guard let dir = sender.representedObject as? String else { return }
+        skip(dir)
+    }
+
+    @objc private func revealClicked(_ sender: NSMenuItem) {
+        guard let p = sender.representedObject as? String else { return }
+        hide()
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)])
+    }
+
+    /// Shift+Command+Delete: skip the folder that holds the selected result.
+    private func skipSelectedFolder() {
+        guard let p = selectedPath, let dir = engine.skipChoices(for: p).first else { return }
+        skip(dir)
+    }
+
+    private func skip(_ dir: String) {
+        engine.skip(folder: dir)
+        flash("Skipped \(shortPath(dir)). Names stay searchable. Undo: menu bar, Skipped Folders")
+        runSearch()
+    }
+
+    private func shortPath(_ p: String) -> String { p.hasPrefix(index.home) ? "~" + p.dropFirst(index.home.count) : p }
 
     @objc func openSelected() {
         guard let p = selectedPath else { return }
