@@ -36,6 +36,7 @@ enum ModelFiles {
 /// A small shell wrapper stops the server when this app dies, even after a crash.
 final class EmbedServer {
     private let contextTokens: Int
+    private let background: Bool
     private var proc: Process?
     private var port: Int32 = 0
     private let lock = NSLock()
@@ -46,7 +47,9 @@ final class EmbedServer {
         return URLSession(configuration: c)
     }()
 
-    init(contextTokens: Int) { self.contextTokens = contextTokens }
+    /// `background`: macOS runs the server at background priority (`taskpolicy -b`), so apps in use come first.
+    /// Only the indexer's server uses it. The search box's server must answer each keystroke at once.
+    init(contextTokens: Int, background: Bool = false) { self.contextTokens = contextTokens; self.background = background }
 
     var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return proc?.isRunning == true }
 
@@ -60,7 +63,8 @@ final class EmbedServer {
                     "--host", "127.0.0.1", "--port", String(port), "-np", "1", "--no-webui",
                     "-c", String(contextTokens), "-b", String(contextTokens), "-ub", String(contextTokens)]
         // kill -9: on a normal stop, llama-server aborts in its Metal cleanup and macOS logs a crash report.
-        let script = #""$0" "$@" & c=$!; trap 'kill -9 $c 2>/dev/null' EXIT TERM; while kill -0 $PPID 2>/dev/null && kill -0 $c 2>/dev/null; do sleep 2; done"#
+        let launch = background ? #"/usr/sbin/taskpolicy -b "$0" "$@""# : #""$0" "$@""#
+        let script = launch + #" & c=$!; trap 'kill -9 $c 2>/dev/null' EXIT TERM; while kill -0 $PPID 2>/dev/null && kill -0 $c 2>/dev/null; do sleep 2; done"#
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", script, server] + args

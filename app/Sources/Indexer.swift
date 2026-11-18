@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import IOKit
 import IOKit.ps
 
 /// Fills the index in passes, so search improves within minutes (LOG 2026-10-30):
@@ -8,12 +10,19 @@ import IOKit.ps
 /// 4. code: one vector per code or data file, from its start.
 /// 5. deep: every piece of notes and PDFs, only on power.
 /// Model work stops while the search box is open. Changed files jump the queue.
+///
+/// Model work must never slow the apps in use (LOG 2026-11-18). So:
+/// - it rests after each job, at least as long as the job took, and 3 times as long while the person uses the Mac;
+/// - the deep read runs only after 2 minutes without keyboard or mouse use;
+/// - it waits in Low Power Mode, when macOS reports the Mac as hot, and while another app keeps the GPU busy;
+/// - each request to the model is small, so the GPU is free to draw the screen between requests;
+/// - its llama-server runs at background priority.
 final class Indexer {
     enum Phase { case idle, words, notes, images, code, deep, done }
 
     private let index: MeaningIndex
     private let home: String
-    private let server = EmbedServer(contextTokens: 2048)
+    private let server = EmbedServer(contextTokens: 2048, background: true)
     private let cond = NSCondition()
     private var urgent: [String] = []
     private var notes: [MeaningIndex.Pending] = []     // these three are popped from the end, newest last
@@ -30,12 +39,30 @@ final class Indexer {
     private var phase = Phase.idle
     private var waitingForPower = false
     private var phaseStart = Date()
+    private var busy = false                            // waiting for the Mac: hot, Low Power Mode or GPU in use
+    private var deepBuffer: [MeaningIndex.DeepPiece] = []   // loop thread only
+    private var lastDeepCount = Date.distantPast             // loop thread only
+    private var countedAtEnd = false                         // guarded by cond
     var onProgress: (() -> Void)?
     var onPhaseDone: ((String, TimeInterval) -> Void)?
 
     /// Below this charge, on battery, model work waits. The deep pass always waits for power.
     static let minBattery = 50
     static let batch = 8
+    /// The person counts as away after this long without keyboard or mouse use.
+    /// `--away-after <seconds>` changes it, to test the in-use case while nobody types.
+    static let awayAfter: TimeInterval = args.firstIndex(of: "--away-after").flatMap { i in
+        i + 1 < args.count ? TimeInterval(args[i + 1]) : nil } ?? 120
+    /// Rest after a job, as a multiple of the job's time: GPU share at most 1 / (1 + rest).
+    static let restWhileAway = 1.0
+    static let restWhileInUse = 3.0
+    /// Another app keeps the GPU this busy: wait.
+    static let gpuBusyPercent = 85
+    /// One request to the model holds at most this many texts and characters, so one GPU pass stays short.
+    static let requestTexts = 2
+    static let requestChars = 2000
+    /// `--full-speed` skips the rests and the gates, for tests and timing runs.
+    static let fullSpeed = args.contains("--full-speed")
 
     init(index: MeaningIndex, home: String) { self.index = index; self.home = home }
 
@@ -61,6 +88,7 @@ final class Indexer {
         cond.lock(); defer { cond.unlock() }
         func n(_ v: Int) -> String { NumberFormatter.localizedString(from: NSNumber(value: v), number: .decimal) }
         if userPaused { return "Indexing paused" }
+        if busy && phase != .done && phase != .deep { return "Waiting while your Mac is busy" }
         switch phase {
         case .idle: return "Getting ready to read your files"
         case .words: return "Reading your files: \(n(wordsDone)) of \(n(wordsTotal))"
@@ -211,7 +239,8 @@ final class Indexer {
     private func loop() {
         while true {
             let job = nextJob()
-            lastWork = Date()
+            let began = Date()
+            lastWork = began
             autoreleasepool {
                 switch job {
                 case .urgent(let p): processUrgent(p)
@@ -221,7 +250,55 @@ final class Indexer {
                 }
             }
             onProgress?()
+            rest(after: Date().timeIntervalSince(began))
         }
+    }
+
+    /// Leaves the GPU and CPU free for a while, in proportion to the job just done.
+    private func rest(after took: TimeInterval) {
+        guard !Self.fullSpeed else { return }
+        let factor = Self.idleSeconds() < Self.awayAfter ? Self.restWhileInUse : Self.restWhileAway
+        let until = Date().addingTimeInterval(min(30, took * factor))
+        cond.lock()
+        while Date() < until { _ = cond.wait(until: until) }
+        cond.unlock()
+    }
+
+    // MARK: The Mac's state
+
+    /// Seconds since the last keyboard, mouse or trackpad event. Needs no permission.
+    static func idleSeconds() -> TimeInterval {
+        guard let any = CGEventType(rawValue: ~0) else { return .infinity }
+        return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: any)
+    }
+
+    /// The GPU's busy share, as Activity Monitor's GPU history reads it. Nil if macOS does not report it.
+    static func gpuPercent() -> Int? {
+        var it: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else { return nil }
+        defer { IOObjectRelease(it) }
+        var top: Int?
+        while true {
+            let s = IOIteratorNext(it)
+            if s == 0 { break }
+            defer { IOObjectRelease(s) }
+            if let stats = IORegistryEntryCreateCFProperty(s, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? [String: Any], let u = stats["Device Utilization %"] as? Int {
+                top = max(top ?? 0, u)
+            }
+        }
+        return top
+    }
+
+    /// True when model work should wait: Low Power Mode, a hot Mac, or another app using the GPU.
+    /// Read after a rest, so the GPU reading is mostly other apps.
+    static func macIsBusy() -> Bool {
+        if fullSpeed { return false }
+        let info = ProcessInfo.processInfo
+        if info.isLowPowerModeEnabled { return true }
+        if info.thermalState == .serious || info.thermalState == .critical { return true }
+        if let g = gpuPercent(), g >= gpuBusyPercent { return true }
+        return false
     }
 
     private func waitWhilePaused() {
@@ -240,12 +317,37 @@ final class Indexer {
             let canModel = power.onAC || power.percent >= Self.minBattery
             let want: Phase = !notes.isEmpty ? .notes : !images.isEmpty ? .images : !code.isEmpty ? .code : deepLeft > 0 ? .deep : .done
             waitingForPower = want == .deep ? !power.onAC : (want != .done && !canModel)
+            if want == .done && deepLeft == 0 && !countedAtEnd {
+                // The deep count refreshes at most every 30 s. Count once more before calling it done.
+                countedAtEnd = true
+                cond.unlock()
+                refreshDeepCount(force: true)
+                continue
+            }
+            if want != .done { countedAtEnd = false }
             if want == .done || waitingForPower {
                 cond.unlock()
                 setPhase(want)
                 cond.lock()
-                if want == .done && Date().timeIntervalSince(lastWork) > 600 { server.stop() }
+                // Any wait longer than 10 minutes frees the model's memory. It loads again in about a second.
+                if Date().timeIntervalSince(lastWork) > 600 { server.stop() }
                 _ = cond.wait(until: Date().addingTimeInterval(10))
+                cond.unlock()
+                continue
+            }
+            // Gates for bulk work. A changed file (urgent, above) is one small job and goes first.
+            cond.unlock()
+            let blocked = Self.macIsBusy()
+            let inUse = !Self.fullSpeed && Self.idleSeconds() < Self.awayAfter
+            cond.lock()
+            busy = blocked
+            if blocked || (want == .deep && inUse) {
+                cond.unlock()
+                setPhase(want)
+                onProgress?()
+                cond.lock()
+                if Date().timeIntervalSince(lastWork) > 600 { server.stop() }
+                _ = cond.wait(until: Date().addingTimeInterval(blocked ? 10 : 5))
                 cond.unlock()
                 continue
             }
@@ -299,7 +401,11 @@ final class Indexer {
 
     private func embedDeep() {
         guard server.start() else { requeueLater(); return }
-        let pieces = index.pendingDeep(limit: Self.batch)
+        // One sorted query per 256 pieces, not per batch: the sort reads every waiting piece.
+        // A piece whose file changed meanwhile is harmless: its id is gone, so the update writes nothing.
+        if deepBuffer.isEmpty { deepBuffer = index.pendingDeep(limit: 256) }
+        let pieces = Array(deepBuffer.prefix(Self.batch))
+        deepBuffer.removeFirst(pieces.count)
         guard !pieces.isEmpty else { cond.lock(); deepLeft = 0; cond.unlock(); return }
         let got = embedAll(pieces.map { Self.prompt($0.path, $0.text) })
         index.finish(vectors: zip(pieces, got).map { ($0.pieceID, $0.fileID, $1) }, files: [])
@@ -307,10 +413,22 @@ final class Indexer {
     }
 
     /// One piece the model refuses must not lose the rest of the batch.
+    /// Sends small requests (`requestTexts`, `requestChars`), so each GPU pass is short and the screen can draw in between.
     private func embedAll(_ prompts: [String]) -> [[Float]?] {
-        guard !prompts.isEmpty else { return [] }
-        if let vs = server.embed(texts: prompts), vs.count == prompts.count { return vs }
-        return prompts.map { server.embed(texts: [$0])?.first }
+        var out: [[Float]?] = []
+        out.reserveCapacity(prompts.count)
+        var i = 0
+        while i < prompts.count {
+            var j = i + 1, chars = prompts[i].count
+            while j < prompts.count, j - i < Self.requestTexts, chars + prompts[j].count <= Self.requestChars {
+                chars += prompts[j].count; j += 1
+            }
+            let part = Array(prompts[i..<j])
+            if let vs = server.embed(texts: part), vs.count == part.count { out += vs.map { Optional($0) } }
+            else { out += part.map { server.embed(texts: [$0])?.first } }
+            i = j
+        }
+        return out
     }
 
     private func requeueLater() {
@@ -319,7 +437,9 @@ final class Indexer {
         refillQueues()
     }
 
-    private func refreshDeepCount() {
+    private func refreshDeepCount(force: Bool = false) {
+        guard force || Date().timeIntervalSince(lastDeepCount) > 30 else { return }
+        lastDeepCount = Date()
         let c = index.deepCount()
         cond.lock(); deepLeft = c; cond.unlock()
     }

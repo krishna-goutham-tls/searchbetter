@@ -18,8 +18,14 @@ To use it day to day, run `./install.sh`. It puts the app in /Applications, so S
 The first run may ask for access to Desktop, Documents and Downloads. Allow all three.
 
 File names work at once. The menu line says what is ready. Passes run in this order: exact words, notes and
-PDFs, images, code and data, then a full read of notes and PDFs. Model work stops while the search
-box is open, and below 50% battery. The full read runs only on power.
+PDFs, images, code and data, then a full read of the first 30 pieces of each note and PDF. Model work
+stops while the search box is open, and below 50% battery. The full read runs only on power, and only after
+2 minutes without keyboard or mouse use.
+
+Model work must never slow the apps in use (`Sources/Indexer.swift`, top comment). After each job it rests at
+least as long as the job took, 3 times as long while someone uses the Mac. It waits in Low Power Mode, when
+macOS reports the Mac as hot, and while another app keeps the GPU 85% busy. Each request to the model holds at
+most 2 texts, so one GPU pass stays short. The indexer's llama-server runs at background priority.
 
 A new build has a new ad hoc signature, so macOS asks for folder access again. Until someone allows
 it, the app waits and shows no results.
@@ -28,7 +34,7 @@ it, the app waits and shows no results.
 
 `./make-dmg.sh` builds an unsigned `build.noindex/SearchBetter-<version>.dmg` for local tests. To release, raise the version in `build.sh`, run `./build.sh`, then the shared kit: `active-tls/mac-release/repo/release.sh build.noindex/SearchBetter.app --publish krishna-goutham-tls/searchbetter`. It signs `llama-server` and its libraries, notarizes, and publishes `SearchBetter.dmg`.
 
-Test first run as a stranger, with no window and no keyboard use: set `CFFIXED_USER_HOME` to an empty folder and run the app binary with `--setup-auto`. `--render-setup <start|downloading|checking|failed|ready> --out x.png` draws the setup screen. `--ignore-power` runs model work on battery.
+Test first run as a stranger, with no window and no keyboard use: set `CFFIXED_USER_HOME` to an empty folder and run the app binary with `--setup-auto`. `--render-setup <start|downloading|checking|failed|ready> --out x.png` draws the setup screen. `--ignore-power` runs model work on battery. `--full-speed` skips the rests and waits, for timing runs; without it, `--index` waits for 2 idle minutes before the full read. `--away-after <seconds>` changes those 2 minutes, to test the in-use case.
 
 | Key | Does |
 |---|---|

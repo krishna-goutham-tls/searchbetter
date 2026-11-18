@@ -58,8 +58,8 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundleIdentifier</key><string>space.thelaunch.macsearch</string>
     <key>CFBundleName</key><string>SearchBetter</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.2</string>
-    <key>CFBundleVersion</key><string>3</string>
+    <key>CFBundleShortVersionString</key><string>0.1.3</string>
+    <key>CFBundleVersion</key><string>4</string>
     <key>TLSUpdateRepo</key><string>krishna-goutham-tls/searchbetter</string>
     <key>TLSUpdateAsset</key><string>SearchBetter.dmg</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>

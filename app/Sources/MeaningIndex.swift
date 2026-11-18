@@ -204,13 +204,23 @@ final class MeaningIndex {
 
     static let headChars = 500
 
+    /// The deep read covers the first pieces of each note and PDF, not every page.
+    /// A long file already has a vector for its start. Generated data files (logs, exports, dumps)
+    /// can hold 200 pieces each and once filled 97% of the queue (LOG 2026-11-18).
+    static let deepPiecesPerFile = 30
+    /// A file's pieces are inserted together, so their ids are consecutive.
+    private static let deepWhere = """
+        p.vec IS NULL AND f.stage = 1 AND f.kind IN (2, 4)
+        AND p.id < (SELECT min(id) FROM pieces WHERE file_id = f.id) + \(deepPiecesPerFile)
+        """
+
     /// Pieces of notes and PDFs not yet read in full, newest first.
     func pendingDeep(limit: Int) -> [DeepPiece] {
         writer.sync {
             var s: OpaquePointer?
             sqlite3_prepare_v2(db, """
                 SELECT p.id, p.file_id, f.path, p.text FROM pieces p JOIN files f ON f.id = p.file_id
-                WHERE p.vec IS NULL AND f.stage = 1 AND f.kind IN (2, 4) ORDER BY f.mtime DESC LIMIT \(limit)
+                WHERE \(Self.deepWhere) ORDER BY f.mtime DESC LIMIT \(limit)
                 """, -1, &s, nil)
             var out: [DeepPiece] = []
             while sqlite3_step(s) == SQLITE_ROW {
@@ -225,7 +235,7 @@ final class MeaningIndex {
     func deepCount() -> Int {
         writer.sync {
             var s: OpaquePointer?
-            sqlite3_prepare_v2(db, "SELECT count(*) FROM pieces p JOIN files f ON f.id = p.file_id WHERE p.vec IS NULL AND f.stage = 1 AND f.kind IN (2, 4)", -1, &s, nil)
+            sqlite3_prepare_v2(db, "SELECT count(*) FROM pieces p JOIN files f ON f.id = p.file_id WHERE \(Self.deepWhere)", -1, &s, nil)
             defer { sqlite3_finalize(s) }
             return sqlite3_step(s) == SQLITE_ROW ? Int(sqlite3_column_int(s, 0)) : 0
         }
