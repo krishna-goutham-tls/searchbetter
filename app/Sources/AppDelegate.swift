@@ -52,7 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SearchBetter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         for i in menu.items { i.target = i.action == #selector(NSApplication.terminate(_:)) ? NSApp : self }
+        menu.insertItem(Updater.shared.menuItem, at: menu.items.count - 1)
         statusItem.menu = menu
+        Updater.shared.start()
 
         meaningItem.isHidden = !needsSetup
         if hotKey?.isRegistered != true { hotKeyWarning.isHidden = false }

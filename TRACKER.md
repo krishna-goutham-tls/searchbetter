@@ -1,5 +1,10 @@
 # Tracker
 
+## Updates
+
+- [x] In-app updater (2026-11-18, not released): daily GitHub check, update window, one-click install with a Developer ID check, "Check for updates…" in the menu. Tested against the real GitHub release
+- [ ] First release with the updater (needs Krishna's go). Copies from before it never update themselves
+
 Done: friend test (2026-10-31), launch video with the Spotlight race (v4, 2026-11-02), landing page at thelaunch.space/tools/searchbetter (2026-11-03).
 
 Before launch: Developer ID signing, menu bar icon, start at login, formal trademark check on SearchBetter.

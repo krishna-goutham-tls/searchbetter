@@ -2,7 +2,7 @@
 
 A menu bar app. Option+Space opens a search box. Results show while you type.
 It searches file names, words inside files, and meaning in text, code, PDFs and images.
-Nothing leaves the Mac.
+No file, search or result leaves the Mac. The app goes online only for the model download and a daily update check (`Sources/Updater.swift`, shared from mac-release).
 
 ## Build and check
 

@@ -44,7 +44,7 @@ The first read of your files can take 15 minutes or more. File names are searcha
 
 ## What it reads and where the data goes
 
-The model download is the only time the app uses the internet. Search runs on your Mac through a local copy of `llama-server`, and the app sends nothing else out.
+The app uses the internet for two things only: the one-time model download, and the update check. Once a day the app asks GitHub whether a newer version exists. If one does, a small window offers it: click Update and it installs and reopens by itself. The check sends nothing about you or your Mac. Turn it off with "Check daily" in that window, and check by hand from the menu with **Check for updates…**. Search runs on your Mac through a local copy of `llama-server`, and no file, search or result leaves your Mac.
 
 It reads your home folder, except hidden folders, `~/Library` and build folders such as `node_modules`. It does not read key files, or files with `secret`, `password`, `token`, `credential` or `api_key` in the name. The index is at `~/Library/Application Support/mac-search/`, and deleting that folder removes all of it.
 
